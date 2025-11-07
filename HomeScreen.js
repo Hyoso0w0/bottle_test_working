@@ -25,6 +25,7 @@ const HomeScreen = ({ navigation, route }) => {
 
   // 🌳 나무 배열 상태
   const [forestTrees, setForestTrees] = useState([]);
+  const [missionHistory, setMissionHistory] = useState([]);
 
   const timeSlot = getTimeSlot();
   const [recommendVisible, setRecommendVisible] = useState(false);
@@ -34,74 +35,86 @@ const HomeScreen = ({ navigation, route }) => {
   );
 
   // 🌳 미션별 나무 개수 & 색 설정
-  const missionConfigs = {
-    '물 1컵 마시기': {
-      trees: 1,
-      color: '#60a5fa', // 파란 느낌
-    },
-    '가벼운 스트레칭 5분': {
-      trees: 2,
-      color: '#facc15', // 노랑
-    },
-    '감사 3줄 적기': {
-      trees: 1,
-      color: '#f97316', // 주황
-    },
-    '가볍게 산책 10분': {
-      trees: 2,
-      color: '#22c55e', // 초록
-    },
-    '눈 휴식 3분': {
-      trees: 1,
-      color: '#a855f7', // 보라
-    },
-    '책 5쪽 읽기': {
-      trees: 2,
-      color: '#0ea5e9', // 하늘
-    },
-    '하루 회고 3줄': {
-      trees: 1,
-      color: '#64748b', // 잿빛
-    },
-    '방 정리 5분': {
-      trees: 2,
-      color: '#16a34a', // 진한 초록
-    },
-    '명상 3분': {
-      trees: 1,
-      color: '#f97316',
-    },
-  };
+ // ✅ 미션별 나무/식물 아이콘 정의 (통일감 있게)
+const missionConfigs = {
+  '물 1컵 마시기': {
+    trees: 1,
+    emoji: '🌱', // 새싹 — 생명력의 시작
+  },
+  '가벼운 스트레칭 5분': {
+    trees: 2,
+    emoji: '🌲', // 침엽수 — 활력과 성장
+  },
+  '감사 3줄 적기': {
+    trees: 1,
+    emoji: '🌼', // 꽃 — 긍정과 감사의 상징
+  },
+  '가볍게 산책 10분': {
+    trees: 2,
+    emoji: '🌳', // 나무 — 안정과 휴식
+  },
+  '눈 휴식 3분': {
+    trees: 1,
+    emoji: '🌾', // 들풀 — 자연의 쉼
+  },
+  '책 5쪽 읽기': {
+    trees: 2,
+    emoji: '🌿', // 잎사귀 — 지식의 성장
+  },
+  '하루 회고 3줄': {
+    trees: 1,
+    emoji: '🍂', // 낙엽 — 하루의 마무리
+  },
+  '방 정리 5분': {
+    trees: 2,
+    emoji: '🪴', // 화분 — 정돈된 공간 속의 생명
+  },
+  '명상 3분': {
+    trees: 1,
+    emoji: '🪷', // 연꽃 — 명상의 상징
+  },
+};
 
   // ✅ 미션 완료 시: 기록 + 나무 추가
   const completeMission = () => {
-    setCompleted((c) => c + 1);
+  setCompleted((c) => c + 1);
 
-    // 현재 선택된 미션의 설정 가져오기
-    const config = missionConfigs[selectedMission] || {
-      trees: 1,
-      color: '#22c55e',
-    };
-
-    setForestTrees((prev) => {
-      const maxTrees = 30;
-      const remainingSlots = maxTrees - prev.length;
-      if (remainingSlots <= 0) return prev;
-
-      const treeCountToAdd = Math.min(config.trees, remainingSlots);
-
-      const newTrees = Array.from({ length: treeCountToAdd }).map((_, idx) => ({
-        id: `${Date.now()}-${idx}`,
-        color: config.color,
-      }));
-
-      return [...prev, ...newTrees];
-    });
-
-    // 미션 완료 후 선물 UI 노출
-    setRecommendVisible(true);
+  const config = missionConfigs[selectedMission] || {
+    trees: 1,
+    emoji: '🌳',
   };
 
+  // 나무 추가
+  setForestTrees((prev) => {
+    const maxTrees = 30;
+    const remainingSlots = maxTrees - prev.length;
+    if (remainingSlots <= 0) return prev;
+
+    const treeCountToAdd = Math.min(config.trees, remainingSlots);
+
+    const newTrees = Array.from({ length: treeCountToAdd }).map((_, idx) => ({
+      id: `${Date.now()}-${idx}`,
+      emoji: config.emoji || '🌳',
+    }));
+
+    return [...prev, ...newTrees];
+  });
+
+  // 🔹 미션 기록 추가
+  const now = new Date();
+  setMissionHistory((prev) => [
+    {
+      id: `${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
+      mission: selectedMission,
+      completedAt: now.toISOString(),
+      timeSlot,
+      emoji: config.emoji || '🌳',
+    },
+    ...prev,
+  ]);
+
+  setRecommendVisible(true);
+};
   const acceptRecommended = () => {
     setSelectedMission(recommendedMission);
     setRecommendVisible(false);
@@ -160,7 +173,7 @@ const HomeScreen = ({ navigation, route }) => {
       <View style={styles.navBtns}>
         <TouchableOpacity
           style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
-          onPress={() => navigation.navigate('Records', { completed })}
+         onPress={() => navigation.navigate('Records', { history: missionHistory })}
         >
           <Text style={styles.btnPrimaryText}>내 기록 보기</Text>
         </TouchableOpacity>

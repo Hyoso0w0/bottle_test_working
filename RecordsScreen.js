@@ -1,30 +1,99 @@
-import { StyleSheet, Text, View, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal } from 'react-native';
+
+// 날짜 형식 변환 함수
+const formatDate = (isoString) => {
+  const date = new Date(isoString);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate()
+  ).padStart(2, '0')}`;
+};
+
+const formatTime = (isoString) => {
+  const date = new Date(isoString);
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+};
+
+const timeSlotLabel = (slot) => {
+  if (slot === 'morning') return '아침';
+  if (slot === 'afternoon') return '오후';
+  if (slot === 'evening') return '저녁';
+  return '';
+};
 
 const RecordsScreen = ({ route }) => {
-  const completed = route.params?.completed ?? 0;
+  const history = route.params?.history ?? [];
+  const [selectedMission, setSelectedMission] = useState(null); // 상세 팝업용
 
-  // 간단한 더미 기록: 완료 수 기준으로 리스트 생성
-  const records = Array.from({ length: completed }).map((_, i) => ({
-    id: i + 1,
-    title: `완료 미션 #${i + 1}`,
-    date: `2025-11-${String(3 - Math.floor(i / 3)).padStart(2, '0')} 1${i % 10}:00`,
-  }));
+  // ✅ 날짜별로 묶기
+  const groupedByDate = history.reduce((acc, record) => {
+    const dateKey = formatDate(record.completedAt);
+    if (!acc[dateKey]) acc[dateKey] = [];
+    acc[dateKey].push(record);
+    return acc;
+  }, {});
+
+  const dates = Object.keys(groupedByDate).sort((a, b) => (a < b ? 1 : -1));
 
   return (
     <ScrollView contentContainerStyle={styles.screenContainer}>
       <Text style={styles.title}>내 기록</Text>
-      <View style={styles.card}>
-        {records.length === 0 ? (
+
+      {history.length === 0 ? (
+        <View style={styles.card}>
           <Text style={styles.emptyText}>아직 완료된 미션이 없어요.</Text>
-        ) : (
-          records.map((r) => (
-            <View key={r.id} style={styles.recordItem}>
-              <Text style={styles.recordTitle}>{r.title}</Text>
-              <Text style={styles.recordDate}>{r.date}</Text>
-            </View>
-          ))
-        )}
-      </View>
+        </View>
+      ) : (
+        dates.map((date) => (
+          <View key={date} style={styles.card}>
+            <Text style={styles.dateHeader}>{date}</Text>
+            {groupedByDate[date].map((r) => (
+              <TouchableOpacity
+                key={r.id}
+                style={styles.recordItem}
+                onPress={() => setSelectedMission(r)} // 클릭 시 팝업
+              >
+                <Text style={styles.recordTitle}>
+                  {r.emoji} {r.mission}
+                </Text>
+                <Text style={styles.recordDate}>
+                  완료 시간: {formatTime(r.completedAt)} ({timeSlotLabel(r.timeSlot)})
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ))
+      )}
+
+      {/* ✅ 팝업 모달 */}
+      <Modal visible={!!selectedMission} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalBox}>
+            {selectedMission && (
+              <>
+                <Text style={styles.modalTitle}>
+                  {selectedMission.emoji} {selectedMission.mission}
+                </Text>
+                <Text style={styles.modalText}>
+                  완료 날짜: {formatDate(selectedMission.completedAt)}
+                </Text>
+                <Text style={styles.modalText}>
+                  완료 시간: {formatTime(selectedMission.completedAt)} ({timeSlotLabel(selectedMission.timeSlot)})
+                </Text>
+                <Text style={styles.modalText}>
+                  나무 종류: {selectedMission.emoji}
+                </Text>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnClose]}
+                  onPress={() => setSelectedMission(null)}
+                >
+                  <Text style={styles.btnText}>닫기</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -32,7 +101,7 @@ const RecordsScreen = ({ route }) => {
 const styles = StyleSheet.create({
   screenContainer: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 60,
   },
   title: {
     fontSize: 28,
@@ -51,9 +120,11 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
-  /** 기록 **/
-  emptyText: {
-    color: '#6b7280',
+  dateHeader: {
+    fontWeight: '700',
+    fontSize: 16,
+    color: '#111827',
+    marginBottom: 8,
   },
   recordItem: {
     paddingVertical: 8,
@@ -62,10 +133,52 @@ const styles = StyleSheet.create({
   },
   recordTitle: {
     fontWeight: '700',
+    fontSize: 16,
   },
   recordDate: {
     color: '#6b7280',
+    fontSize: 13,
     marginTop: 2,
+  },
+  emptyText: {
+    color: '#9ca3af',
+  },
+  /** 모달 **/
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalBox: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '80%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  modalText: {
+    color: '#4b5563',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  btn: {
+    marginTop: 12,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  btnClose: {
+    backgroundColor: '#111827',
+  },
+  btnText: {
+    color: '#fff',
+    fontWeight: '700',
   },
 });
 

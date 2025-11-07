@@ -1,4 +1,3 @@
-/** ---------- 화면들 ---------- **/
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-native';
@@ -24,17 +23,82 @@ const HomeScreen = ({ navigation, route }) => {
   const [selectedMission, setSelectedMission] = useState('물 마시기 1컵');
   const [completed, setCompleted] = useState(0);
 
+  // 🌳 나무 배열 상태
+  const [forestTrees, setForestTrees] = useState([]);
+
   const timeSlot = getTimeSlot();
   const [recommendVisible, setRecommendVisible] = useState(false);
   const recommendedMission = useMemo(
     () => pickRandom(recommendedByTime[timeSlot]),
-    // 시간대 바뀌면 새 추천
     [timeSlot]
   );
 
+  // 🌳 미션별 나무 개수 & 색 설정
+  const missionConfigs = {
+    '물 1컵 마시기': {
+      trees: 1,
+      color: '#60a5fa', // 파란 느낌
+    },
+    '가벼운 스트레칭 5분': {
+      trees: 2,
+      color: '#facc15', // 노랑
+    },
+    '감사 3줄 적기': {
+      trees: 1,
+      color: '#f97316', // 주황
+    },
+    '가볍게 산책 10분': {
+      trees: 2,
+      color: '#22c55e', // 초록
+    },
+    '눈 휴식 3분': {
+      trees: 1,
+      color: '#a855f7', // 보라
+    },
+    '책 5쪽 읽기': {
+      trees: 2,
+      color: '#0ea5e9', // 하늘
+    },
+    '하루 회고 3줄': {
+      trees: 1,
+      color: '#64748b', // 잿빛
+    },
+    '방 정리 5분': {
+      trees: 2,
+      color: '#16a34a', // 진한 초록
+    },
+    '명상 3분': {
+      trees: 1,
+      color: '#f97316',
+    },
+  };
+
+  // ✅ 미션 완료 시: 기록 + 나무 추가
   const completeMission = () => {
     setCompleted((c) => c + 1);
-    // 미션 완료 시 선물 UI(추천) 노출
+
+    // 현재 선택된 미션의 설정 가져오기
+    const config = missionConfigs[selectedMission] || {
+      trees: 1,
+      color: '#22c55e',
+    };
+
+    setForestTrees((prev) => {
+      const maxTrees = 30;
+      const remainingSlots = maxTrees - prev.length;
+      if (remainingSlots <= 0) return prev;
+
+      const treeCountToAdd = Math.min(config.trees, remainingSlots);
+
+      const newTrees = Array.from({ length: treeCountToAdd }).map((_, idx) => ({
+        id: `${Date.now()}-${idx}`,
+        color: config.color,
+      }));
+
+      return [...prev, ...newTrees];
+    });
+
+    // 미션 완료 후 선물 UI 노출
     setRecommendVisible(true);
   };
 
@@ -83,10 +147,13 @@ const HomeScreen = ({ navigation, route }) => {
         </View>
       </View>
 
-      {/* 나무 빽빽한 것 (내 성과) */}
+      {/* 나무 숲 (내 성과) */}
       <View style={styles.card}>
         <Text style={styles.cardHeader}>나의 숲(성과)</Text>
-        <TreeForest completedCount={completed} />
+        <TreeForest trees={forestTrees} />
+        <Text style={styles.expText}>
+          완료 미션: {completed}개 / 심은 나무: {forestTrees.length}그루
+        </Text>
       </View>
 
       {/* 이동 버튼들 */}
@@ -207,6 +274,11 @@ const styles = StyleSheet.create({
   btnOutlineText: {
     color: '#111827',
     fontWeight: '700',
+  },
+  expText: {
+    marginTop: 4,
+    color: '#4b5563',
+    fontSize: 12,
   },
 });
 

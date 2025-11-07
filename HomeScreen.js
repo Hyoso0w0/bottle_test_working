@@ -1,8 +1,10 @@
+// HomeScreen.js
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-native';
 import TreeForest from './TreeForest';
 import GiftRecommend from './GiftRecommend';
+import * as Notifications from 'expo-notifications';
 
 const getTimeSlot = () => {
   const h = new Date().getHours();
@@ -19,12 +21,25 @@ const recommendedByTime = {
 
 const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-const HomeScreen = ({ navigation, route }) => {
-  const [selectedMission, setSelectedMission] = useState('물 마시기 1컵');
+// 🔔 즉시 알림 테스트용 함수
+const sendTestNotification = async () => {
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: '보들보틀 🌱',
+      body: '지금 물 1컵 마실 시간이에요!',
+      data: { screen: 'Home' },
+    },
+    trigger: null, // null이면 즉시 발송
+  });
+};
+
+const HomeScreen = ({ navigation }) => {
+  const [selectedMission, setSelectedMission] = useState('물 1컵 마시기'); // 🔹 key와 맞추기
   const [completed, setCompleted] = useState(0);
 
   // 🌳 나무 배열 상태
   const [forestTrees, setForestTrees] = useState([]);
+  // 📝 완료 미션 기록
   const [missionHistory, setMissionHistory] = useState([]);
 
   const timeSlot = getTimeSlot();
@@ -34,87 +49,87 @@ const HomeScreen = ({ navigation, route }) => {
     [timeSlot]
   );
 
-  // 🌳 미션별 나무 개수 & 색 설정
- // ✅ 미션별 나무/식물 아이콘 정의 (통일감 있게)
-const missionConfigs = {
-  '물 1컵 마시기': {
-    trees: 1,
-    emoji: '🌱', // 새싹 — 생명력의 시작
-  },
-  '가벼운 스트레칭 5분': {
-    trees: 2,
-    emoji: '🌲', // 침엽수 — 활력과 성장
-  },
-  '감사 3줄 적기': {
-    trees: 1,
-    emoji: '🌼', // 꽃 — 긍정과 감사의 상징
-  },
-  '가볍게 산책 10분': {
-    trees: 2,
-    emoji: '🌳', // 나무 — 안정과 휴식
-  },
-  '눈 휴식 3분': {
-    trees: 1,
-    emoji: '🌾', // 들풀 — 자연의 쉼
-  },
-  '책 5쪽 읽기': {
-    trees: 2,
-    emoji: '🌿', // 잎사귀 — 지식의 성장
-  },
-  '하루 회고 3줄': {
-    trees: 1,
-    emoji: '🍂', // 낙엽 — 하루의 마무리
-  },
-  '방 정리 5분': {
-    trees: 2,
-    emoji: '🪴', // 화분 — 정돈된 공간 속의 생명
-  },
-  '명상 3분': {
-    trees: 1,
-    emoji: '🪷', // 연꽃 — 명상의 상징
-  },
-};
+  // ✅ 미션별 나무/식물 아이콘 정의 (통일감 있게)
+  const missionConfigs = {
+    '물 1컵 마시기': {
+      trees: 1,
+      emoji: '🌱',
+    },
+    '가벼운 스트레칭 5분': {
+      trees: 2,
+      emoji: '🌲',
+    },
+    '감사 3줄 적기': {
+      trees: 1,
+      emoji: '🌼',
+    },
+    '가볍게 산책 10분': {
+      trees: 2,
+      emoji: '🌳',
+    },
+    '눈 휴식 3분': {
+      trees: 1,
+      emoji: '🌾',
+    },
+    '책 5쪽 읽기': {
+      trees: 2,
+      emoji: '🌿',
+    },
+    '하루 회고 3줄': {
+      trees: 1,
+      emoji: '🍂',
+    },
+    '방 정리 5분': {
+      trees: 2,
+      emoji: '🪴',
+    },
+    '명상 3분': {
+      trees: 1,
+      emoji: '🪷',
+    },
+  };
 
   // ✅ 미션 완료 시: 기록 + 나무 추가
   const completeMission = () => {
-  setCompleted((c) => c + 1);
+    setCompleted((c) => c + 1);
 
-  const config = missionConfigs[selectedMission] || {
-    trees: 1,
-    emoji: '🌳',
+    const config = missionConfigs[selectedMission] || {
+      trees: 1,
+      emoji: '🌳',
+    };
+
+    // 나무 추가
+    setForestTrees((prev) => {
+      const maxTrees = 30;
+      const remainingSlots = maxTrees - prev.length;
+      if (remainingSlots <= 0) return prev;
+
+      const treeCountToAdd = Math.min(config.trees, remainingSlots);
+
+      const newTrees = Array.from({ length: treeCountToAdd }).map((_, idx) => ({
+        id: `${Date.now()}-${idx}`,
+        emoji: config.emoji || '🌳',
+      }));
+
+      return [...prev, ...newTrees];
+    });
+
+    // 🔹 미션 기록 추가
+    const now = new Date();
+    setMissionHistory((prev) => [
+      {
+        id: `${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
+        mission: selectedMission,
+        completedAt: now.toISOString(),
+        timeSlot,
+        emoji: config.emoji || '🌳',
+      },
+      ...prev,
+    ]);
+
+    setRecommendVisible(true);
   };
 
-  // 나무 추가
-  setForestTrees((prev) => {
-    const maxTrees = 30;
-    const remainingSlots = maxTrees - prev.length;
-    if (remainingSlots <= 0) return prev;
-
-    const treeCountToAdd = Math.min(config.trees, remainingSlots);
-
-    const newTrees = Array.from({ length: treeCountToAdd }).map((_, idx) => ({
-      id: `${Date.now()}-${idx}`,
-      emoji: config.emoji || '🌳',
-    }));
-
-    return [...prev, ...newTrees];
-  });
-
-  // 🔹 미션 기록 추가
-  const now = new Date();
-  setMissionHistory((prev) => [
-    {
-      id: `${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
-      mission: selectedMission,
-      completedAt: now.toISOString(),
-      timeSlot,
-      emoji: config.emoji || '🌳',
-    },
-    ...prev,
-  ]);
-
-  setRecommendVisible(true);
-};
   const acceptRecommended = () => {
     setSelectedMission(recommendedMission);
     setRecommendVisible(false);
@@ -173,7 +188,7 @@ const missionConfigs = {
       <View style={styles.navBtns}>
         <TouchableOpacity
           style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
-         onPress={() => navigation.navigate('Records', { history: missionHistory })}
+          onPress={() => navigation.navigate('Records', { history: missionHistory })}
         >
           <Text style={styles.btnPrimaryText}>내 기록 보기</Text>
         </TouchableOpacity>
@@ -183,6 +198,13 @@ const missionConfigs = {
           onPress={() => navigation.navigate('Notifications')}
         >
           <Text style={styles.btnSecondaryText}>알림 커스터마이징</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 🔔 알림 테스트 버튼 */}
+      <View style={{ marginTop: 16 }}>
+        <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={sendTestNotification}>
+          <Text style={styles.btnPrimaryText}>알림 테스트 보내기</Text>
         </TouchableOpacity>
       </View>
 

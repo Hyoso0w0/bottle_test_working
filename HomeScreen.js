@@ -201,6 +201,16 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
+      {/* 캘린더 버튼 */}
+      <View style={{ marginTop: 16 }}>
+        <TouchableOpacity
+          style={[styles.btn, styles.btnOutline]}
+          onPress={() => navigation.navigate('Calendar')}
+        >
+          <Text style={styles.btnOutlineText}>📅 캘린더 보기</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* 🔔 알림 테스트 버튼 */}
       <View style={{ marginTop: 16 }}>
         <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={sendTestNotification}>

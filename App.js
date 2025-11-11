@@ -7,6 +7,7 @@ import * as Notifications from 'expo-notifications';
 import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
 import NotificationsScreen from './NotificationsScreen';
+import CalendarScreen from './CalendarScreen';
 
 // 알림 핸들러 설정 (앱이 foreground일 때 어떻게 보일지)
 Notifications.setNotificationHandler({
@@ -71,6 +72,7 @@ export default function App() {
           component={NotificationsScreen}
           options={{ title: '알림 설정' }}
         />
+        <Stack.Screen name="Calendar" component={CalendarScreen} options={{ title: '캘린더' }} />
       </Stack.Navigator>
     </NavigationContainer>
   );

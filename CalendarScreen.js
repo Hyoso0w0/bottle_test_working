@@ -30,14 +30,46 @@ const isToday = (date) => {
   return isSameDay(date, new Date());
 };
 
-const CalendarScreen = ({ navigation }) => {
+const CalendarScreen = ({ navigation, route }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // 미션 기록 가져오기 (route.params에서)
+  const missionHistory = route.params?.history || [];
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = getDaysInMonth(currentDate);
   const firstDay = getFirstDayOfMonth(currentDate);
+
+  // 특정 날짜에 완료한 미션 수 계산
+  const getMissionCountForDate = (date) => {
+    const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    return missionHistory.filter((mission) => {
+      const missionDate = new Date(mission.completedAt).toISOString().split('T')[0];
+      return missionDate === dateStr;
+    }).length;
+  };
+
+  // 미션 수에 따른 초록색 배경색 계산 (0개 = 연한색, 많을수록 진하게)
+  const getGreenBackgroundColor = (missionCount) => {
+    if (missionCount === 0) return null; // 배경색 없음
+    
+    // 최대 미션 수를 5개로 가정 (더 많으면 진한 초록색)
+    const maxMissions = 5;
+    const intensity = Math.min(missionCount / maxMissions, 1);
+    
+    // 연한 초록색(#dcfce7)에서 진한 초록색(#16a34a)까지
+    // RGB 값으로 계산
+    const lightGreen = { r: 220, g: 252, b: 231 }; // #dcfce7
+    const darkGreen = { r: 22, g: 163, b: 74 }; // #16a34a
+    
+    const r = Math.round(lightGreen.r + (darkGreen.r - lightGreen.r) * intensity);
+    const g = Math.round(lightGreen.g + (darkGreen.g - lightGreen.g) * intensity);
+    const b = Math.round(lightGreen.b + (darkGreen.b - lightGreen.b) * intensity);
+    
+    return `rgb(${r}, ${g}, ${b})`;
+  };
 
   // 이전 달로 이동
   const goToPreviousMonth = () => {
@@ -92,6 +124,8 @@ const CalendarScreen = ({ navigation }) => {
       const date = new Date(year, month, day);
       const isSelected = isSameDay(date, selectedDate);
       const isTodayDate = isToday(date);
+      const missionCount = getMissionCountForDate(date);
+      const greenBackgroundColor = getGreenBackgroundColor(missionCount);
 
       dateCells.push(
         <TouchableOpacity
@@ -100,6 +134,7 @@ const CalendarScreen = ({ navigation }) => {
             styles.dayCell,
             isSelected && styles.selectedDayCell,
             isTodayDate && !isSelected && styles.todayCell,
+            !isSelected && greenBackgroundColor && { backgroundColor: greenBackgroundColor },
           ]}
           onPress={() => handleDateSelect(day)}
         >
@@ -185,6 +220,9 @@ const CalendarScreen = ({ navigation }) => {
         </Text>
         <Text style={styles.selectedDateSubtext}>
           {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일
+        </Text>
+        <Text style={styles.missionCountText}>
+          완료한 미션: {getMissionCountForDate(selectedDate)}개
         </Text>
       </View>
     </ScrollView>
@@ -326,6 +364,12 @@ const styles = StyleSheet.create({
   selectedDateSubtext: {
     fontSize: 16,
     color: '#6b7280',
+  },
+  missionCountText: {
+    fontSize: 14,
+    color: '#16a34a',
+    fontWeight: '600',
+    marginTop: 8,
   },
 });
 

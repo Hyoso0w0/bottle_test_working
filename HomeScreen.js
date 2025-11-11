@@ -205,7 +205,7 @@ const HomeScreen = ({ navigation }) => {
       <View style={{ marginTop: 16 }}>
         <TouchableOpacity
           style={[styles.btn, styles.btnOutline]}
-          onPress={() => navigation.navigate('Calendar')}
+          onPress={() => navigation.navigate('Calendar', { history: missionHistory })}
         >
           <Text style={styles.btnOutlineText}>📅 캘린더 보기</Text>
         </TouchableOpacity>

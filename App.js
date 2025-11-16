@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
 import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
@@ -26,11 +27,21 @@ export default function App() {
   const responseListener = useRef();
 
   useEffect(() => {
-    // 1) 권한 요청
+    // 1) 권한 요청 및 안드로이드 채널 설정
     (async () => {
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted') {
         await Notifications.requestPermissionsAsync();
+      }
+
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('default', {
+          name: 'Default',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: true,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: '#FF231F7C',
+        });
       }
     })();
 

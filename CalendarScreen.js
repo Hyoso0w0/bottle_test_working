@@ -44,10 +44,27 @@ const CalendarScreen = ({ navigation, route }) => {
 
   // 특정 날짜에 완료한 미션 수 계산
   const getMissionCountForDate = (date) => {
-    const dateStr = date.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    const targetYear = date.getFullYear();
+    const targetMonth = date.getMonth();
+    const targetDay = date.getDate();
+    
     return missionHistory.filter((mission) => {
-      const missionDate = new Date(mission.completedAt).toISOString().split('T')[0];
-      return missionDate === dateStr;
+      const completedAt = mission.completedAt;
+      // 로컬 시간 객체인 경우
+      if (completedAt && typeof completedAt === 'object' && completedAt.year !== undefined) {
+        return (
+          completedAt.year === targetYear &&
+          completedAt.month === targetMonth &&
+          completedAt.date === targetDay
+        );
+      }
+      // ISO 문자열인 경우 (하위 호환성)
+      const missionDate = new Date(completedAt);
+      return (
+        missionDate.getFullYear() === targetYear &&
+        missionDate.getMonth() === targetMonth &&
+        missionDate.getDate() === targetDay
+      );
     }).length;
   };
 

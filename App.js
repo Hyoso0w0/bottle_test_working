@@ -5,6 +5,31 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
+// AsyncStorage 안전하게 import
+let AsyncStorage;
+try {
+  const AsyncStorageModule = require('@react-native-async-storage/async-storage');
+  AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
+  if (!AsyncStorage || AsyncStorage === null) {
+    throw new Error('AsyncStorage is null');
+  }
+} catch (e) {
+  console.warn('AsyncStorage를 로드할 수 없습니다:', e);
+  const memoryStorage = {};
+  AsyncStorage = {
+    _storage: memoryStorage,
+    async getItem(key) {
+      return this._storage[key] || null;
+    },
+    async setItem(key, value) {
+      this._storage[key] = value;
+    },
+    async removeItem(key) {
+      delete this._storage[key];
+    },
+  };
+}
+
 import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
 import NotificationsScreen from './NotificationsScreen';
@@ -26,6 +51,86 @@ export default function App() {
   const notificationListener = useRef();
   const responseListener = useRef();
 
+  // 알림 스케줄링 헬퍼 함수
+  const scheduleAlarms = async (alarmsList) => {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+
+      const pad2 = (n) => String(n).padStart(2, '0');
+      const as24h = (h12, meridiem) => {
+        if (meridiem === 'AM') return h12 % 12;
+        return (h12 % 12) + 12;
+      };
+
+      for (const alarm of alarmsList) {
+        const hour24 = as24h(alarm.hour, alarm.ampm);
+        const content = {
+          title: '보들보틀 🌱',
+          body: alarm.message || `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} 알림이에요.`,
+          data: { screen: 'Home', alarmId: alarm.id },
+        };
+
+        if (alarm.repeatDaily) {
+          // 매일 반복: 첫 알림 시간을 명시적으로 미래로 설정
+          const now = new Date();
+          const todayAtTime = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate(),
+            hour24,
+            alarm.minute,
+            0,
+            0
+          );
+          
+          // 오늘 시간이 이미 지났다면 내일로 설정 (즉시 알림 방지)
+          let firstNotificationTime = todayAtTime;
+          if (todayAtTime <= now) {
+            // 내일 같은 시간으로 설정
+            firstNotificationTime = new Date(todayAtTime.getTime() + 24 * 60 * 60 * 1000);
+          }
+          
+          // 최소 1분 후로 설정 (즉시 알림 완전 방지)
+          const minDelay = 60 * 1000; // 1분
+          if (firstNotificationTime.getTime() - now.getTime() < minDelay) {
+            firstNotificationTime = new Date(now.getTime() + minDelay);
+          }
+          
+          try {
+            const notificationId = await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: { 
+                date: firstNotificationTime,
+                repeats: true 
+              },
+            });
+            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (첫 알림: ${firstNotificationTime.toLocaleString()}, ID: ${notificationId})`);
+          } catch (e) {
+            console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
+          }
+        } else if (alarm.selectedYMD) {
+          const when = new Date(
+            alarm.selectedYMD.year,
+            alarm.selectedYMD.month,
+            alarm.selectedYMD.day,
+            hour24,
+            alarm.minute,
+            0,
+            0
+          );
+          if (when > new Date()) {
+            await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: { date: when },
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('알림 예약 오류:', e);
+    }
+  };
+
   useEffect(() => {
     // 1) 권한 요청 및 안드로이드 채널 설정
     (async () => {
@@ -42,6 +147,19 @@ export default function App() {
           vibrationPattern: [0, 250, 250, 250],
           lightColor: '#FF231F7C',
         });
+      }
+
+      // 2) 앱 시작 시 저장된 알림 불러오기 및 스케줄링 (한 번만 실행)
+      try {
+        const STORAGE_KEY = '@bottle_alarms';
+        const stored = await AsyncStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsedAlarms = JSON.parse(stored);
+          // 저장된 알림들을 스케줄링
+          await scheduleAlarms(parsedAlarms);
+        }
+      } catch (e) {
+        console.warn('알림 불러오기 오류:', e);
       }
     })();
 

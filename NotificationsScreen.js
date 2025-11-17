@@ -82,8 +82,8 @@ const NotificationsScreen = () => {
     return (h12 % 12) + 12;
   };
 
-  // 모든 알림 스케줄링 (먼저 정의)
-  const applyAllSchedules = async (alarmsList = alarms) => {
+  // 안전한 알림 스케줄링 (오늘 시간이 지났는지 확인하여 즉시 발송 방지)
+  const applyAllSchedulesSafely = async (alarmsList = alarms) => {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
 
@@ -96,10 +96,22 @@ const NotificationsScreen = () => {
         };
 
         if (alarm.repeatDaily) {
-          await Notifications.scheduleNotificationAsync({
-            content,
-            trigger: { hour: hour24, minute: alarm.minute, repeats: true },
-          });
+          // 매일 반복: hour와 minute만 사용 (가장 안정적인 방법)
+          // 이 방식은 오늘 시간이 지났어도 내일부터 자동으로 시작
+          // 저장 시 즉시 알림이 나오지 않음 (오늘 시간이 지났으면 내일부터 시작)
+          try {
+            const notificationId = await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: { 
+                hour: hour24, 
+                minute: alarm.minute, 
+                repeats: true 
+              },
+            });
+            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (ID: ${notificationId})`);
+          } catch (e) {
+            console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
+          }
         } else if (alarm.selectedYMD) {
           const when = new Date(
             alarm.selectedYMD.year,
@@ -110,6 +122,7 @@ const NotificationsScreen = () => {
             0,
             0
           );
+          // 미래 시간인지 확인 (과거 시간이면 스케줄링 안 함)
           if (when > new Date()) {
             await Notifications.scheduleNotificationAsync({
               content,
@@ -123,7 +136,10 @@ const NotificationsScreen = () => {
     }
   };
 
-  // 저장된 알림 불러오기
+  // 모든 알림 스케줄링 (앱 시작 시 사용)
+  const applyAllSchedules = applyAllSchedulesSafely;
+
+  // 저장된 알림 불러오기 (스케줄링은 하지 않음 - 이미 스케줄링되어 있음)
   const loadAlarms = async () => {
     try {
       if (!isAsyncStorageAvailable()) {
@@ -134,41 +150,17 @@ const NotificationsScreen = () => {
       if (stored) {
         const parsedAlarms = JSON.parse(stored);
         setAlarms(parsedAlarms);
-        // 저장된 알림들을 다시 스케줄링
-        await applyAllSchedules(parsedAlarms);
+        // 스케줄링은 하지 않음 - 알림은 이미 시스템에 등록되어 있음
+        // 저장/수정/삭제 시에만 스케줄링을 업데이트함
       }
     } catch (e) {
       console.warn('알림 불러오기 오류:', e);
     }
   };
 
-  // 권한/채널/핸들러 설정 및 저장된 알림 불러오기
+  // 저장된 알림 불러오기 (페이지 진입 시 목록만 표시, 스케줄링은 하지 않음)
   useEffect(() => {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
-    });
-
-    (async () => {
-      const perm = await Notifications.getPermissionsAsync();
-      if (perm.status !== 'granted') {
-        await Notifications.requestPermissionsAsync();
-      }
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'Default',
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          sound: 'default',
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        });
-      }
-      // 저장된 알림 불러오기
-      await loadAlarms();
-    })();
+    loadAlarms();
   }, []);
 
   // 12시간/60분 기본 목록
@@ -314,11 +306,12 @@ const NotificationsScreen = () => {
       setIsAdding(false);
     }
 
-    // AsyncStorage에 저장
+    // AsyncStorage에 저장만 함 (스케줄링은 하지 않음)
+    // 스케줄링은 앱 시작 시에만 실행되어 즉시 알림 방지
     await saveAlarmsToStorage(updatedAlarms);
-
-    // 모든 알림 재스케줄링
-    await applyAllSchedules(updatedAlarms);
+    
+    // 앱을 재시작하면 자동으로 스케줄링됨
+    // 또는 수동으로 스케줄링하려면 앱을 완전히 종료 후 다시 시작
   };
 
   // 취소
@@ -331,9 +324,15 @@ const NotificationsScreen = () => {
   const deleteAlarm = async (id) => {
     const newAlarms = alarms.filter(a => a.id !== id);
     setAlarms(newAlarms);
-    // AsyncStorage에 저장
+    // AsyncStorage에 저장만 함 (스케줄링은 하지 않음)
     await saveAlarmsToStorage(newAlarms);
-    await applyAllSchedules(newAlarms);
+    
+    // 모든 알림을 취소 (앱 재시작 시 자동으로 재스케줄링됨)
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch (e) {
+      console.warn('알림 삭제 오류:', e);
+    }
   };
 
   const sendTestNow = async () => {

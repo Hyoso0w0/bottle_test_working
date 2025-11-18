@@ -3,6 +3,67 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView, TextInput, Platfo
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 
+const getNextTriggerDate = (hour, minute, ampm) => {
+  const h24 = ampm === "PM" ? (hour % 12) + 12 : hour % 12;
+
+  const now = new Date();
+  const next = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    h24,
+    minute,
+    0,
+    0
+  );
+
+  // 이미 지났으면 다음날
+  if (next <= now) {
+    next.setDate(next.getDate() + 1);
+  }
+
+  return next;
+};
+
+const scheduleDailyAlarm = async (alarm) => {
+  const nextTime = getNextTriggerDate(
+    alarm.hour,
+    alarm.minute,
+    alarm.ampm
+  );
+
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "보들보틀 🌱",
+      body: alarm.message,
+      data: { alarmId: alarm.id },
+    },
+    trigger: nextTime,  // 🔥 repeats 없음 → 즉시 발송 방지 핵심
+  });
+
+  return notificationId;
+};
+const scheduleOneTimeAlarm = async (alarm) => {
+  const { year, month, day } = alarm.selectedYMD;
+  const h24 = alarm.ampm === "PM" ? (alarm.hour % 12) + 12 : alarm.hour % 12;
+
+  const date = new Date(year, month, day, h24, alarm.minute, 0, 0);
+  const now = new Date();
+
+  if (date <= now) return null;
+
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "보들보틀 🌱",
+      body: alarm.message,
+      data: { alarmId: alarm.id },
+    },
+    trigger: date,
+  });
+
+  return notificationId;
+};
+
 // AsyncStorage 안전하게 import
 let AsyncStorage;
 try {
@@ -36,6 +97,23 @@ const NotificationsScreen = () => {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
+   // 🔥🔥🔥 여기 아래 넣으면 정확하게 맞음
+  useEffect(() => {
+    (async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      console.log("알림 권한 상태:", status);
+
+      // Android는 알림 채널도 필요
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "default",
+          importance: Notifications.AndroidImportance.HIGH,
+        });
+      }
+    })();
+  }, []);
+  // 🔥🔥🔥 여기까지
+  
   // 초기 AM/PM 기준 시간 설정
   const now = new Date();
   const init24 = now.getHours();
@@ -82,217 +160,18 @@ const NotificationsScreen = () => {
     return (h12 % 12) + 12;
   };
 
-  // 안전한 알림 스케줄링 (오늘 시간이 지났는지 확인하여 즉시 발송 방지)
-  const applyAllSchedulesSafely = async (alarmsList = alarms) => {
-    try {
-      // 스케줄링 시작 시간을 전역 변수에 기록 (App.js의 알림 리스너에서 필터링용)
-      // 전역 변수에 접근하기 위해 window 객체 사용 (React Native에서는 global 사용)
-      if (typeof global !== 'undefined') {
-        global.lastSchedulingStartTime = Date.now();
-      }
-      
-      // 모든 기존 알림을 먼저 취소하여 중복 방지
-      // 주의: cancelAllScheduledNotificationsAsync()는 기존 알림을 취소만 하고 발송하지 않음
-      await Notifications.cancelAllScheduledNotificationsAsync();
-      console.log('기존 알림 모두 취소 완료 (알림 발송 안 함)');
-      
-      // 스케줄링 직후 발송되는 알림을 방지하기 위해 짧은 대기
-      await new Promise(resolve => setTimeout(resolve, 200));
+  const applyAllSchedulesSafely = async (alarmsList) => {
+  await Notifications.cancelAllScheduledNotificationsAsync();
 
-      // 각 알림을 정확히 한 번씩만 스케줄링
-      let scheduledCount = 0;
-      for (const alarm of alarmsList) {
-        // 저장된 시간 데이터 확인 (hour, minute, ampm)
-        if (!alarm.hour || alarm.minute === undefined || !alarm.ampm) {
-          console.warn(`알림 시간 데이터 누락: ID ${alarm.id}, hour: ${alarm.hour}, minute: ${alarm.minute}, ampm: ${alarm.ampm}`);
-          continue;
-        }
-
-        // 저장된 시간 데이터 확인 로그
-        console.log(`[스케줄링] 알림 ID ${alarm.id}: 저장된 시간 데이터 확인`);
-        console.log(`  - 저장된 hour: ${alarm.hour}`);
-        console.log(`  - 저장된 minute: ${alarm.minute}`);
-        console.log(`  - 저장된 ampm: ${alarm.ampm}`);
-
-        // 저장된 시간 데이터를 사용하여 24시간 형식으로 변환
-        const hour24 = as24h(alarm.hour, alarm.ampm);
-        console.log(`  - 24시간 형식 변환: ${hour24}시 ${alarm.minute}분`);
-        const content = {
-          title: '보들보틀 🌱',
-          body: alarm.message || `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} 알림이에요.`,
-          data: { screen: 'Home', alarmId: alarm.id },
-        };
-
-        if (alarm.repeatDaily) {
-          // 매일 반복: 저장된 시간(hour, minute)을 사용하여 정확한 시간에 발송
-          const now = new Date();
-          const todayAtTime = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate(),
-            hour24,              // 저장된 hour를 24시간 형식으로 변환한 값
-            alarm.minute,        // 저장된 minute 값
-            0,
-            0
-          );
-          
-          // 첫 알림 시간 결정: 알림 설정에서 선택한 시간에 정확히 알림 발송
-          // 저장 시간과 무관하게, 알림 설정에서 선택한 시간만 사용
-          // 예: 알림 설정에서 1시 30분을 선택했으면 → 매일 1시 30분에 발송
-          // 예: 오늘 1시 3분에 저장했고 알림 설정에서 1시 30분을 선택했으면 → 오늘 1시 30분에 발송
-          // 예: 오늘 1시 35분에 저장했고 알림 설정에서 1시 30분을 선택했으면 → 내일 1시 30분에 발송
-          let firstNotificationTime = todayAtTime;
-          
-          // 현재 시간과 선택한 시간의 차이 계산 (밀리초 단위)
-          const timeDiff = todayAtTime.getTime() - now.getTime();
-          const minutesDiff = Math.floor(timeDiff / 60000);
-          
-          // 알림 설정에서 선택한 시간이 오늘 현재 시간보다 과거이면 내일로 설정
-          // 저장 시간과 무관하게, 선택한 시간만 기준으로 판단
-          // 예: 1시 19분에 저장하고 1시 21분을 선택했으면 → 오늘 1시 21분에 발송
-          // 예: 1시 22분에 저장하고 1시 21분을 선택했으면 → 내일 1시 21분에 발송
-          if (timeDiff <= 0) {
-            // 오늘 선택한 시간이 이미 지났으면 내일 같은 시간에 발송
-            firstNotificationTime = new Date(todayAtTime.getTime() + 24 * 60 * 60 * 1000);
-            console.log(`  - 선택한 시간(${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)})이 이미 지나서 내일로 설정됨`);
-          } else {
-            console.log(`  - 선택한 시간(${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)})이 ${minutesDiff}분 후이므로 오늘로 설정됨`);
-          }
-          
-          try {
-            // 현재 시간과 첫 알림 시간 차이 확인
-            const finalNow = new Date();
-            const timeUntilNotification = firstNotificationTime.getTime() - finalNow.getTime();
-            const minutesUntilNotification = Math.floor(timeUntilNotification / 60000);
-            const secondsUntilNotification = Math.floor((timeUntilNotification % 60000) / 1000);
-            
-            // Date 객체가 유효한지 확인
-            if (isNaN(firstNotificationTime.getTime())) {
-              console.error(`  ✗ 오류: 첫 알림 시간이 유효하지 않습니다: ${firstNotificationTime}`);
-              continue;
-            }
-            
-            console.log(`  - 스케줄링 직전 최종 확인:`);
-            console.log(`    현재 시간: ${finalNow.toLocaleString()}`);
-            console.log(`    첫 알림 시간: ${firstNotificationTime.toLocaleString()}`);
-            console.log(`    시간 차이: ${minutesUntilNotification}분 ${secondsUntilNotification}초`);
-            
-            // Date 객체를 명시적으로 생성하여 전달
-            const scheduledDate = new Date(firstNotificationTime.getTime());
-            console.log(`  - 최종 스케줄링 시간: ${scheduledDate.toLocaleString()} (ISO: ${scheduledDate.toISOString()})`);
-            
-            // 스케줄링 시간이 미래인지 최종 확인
-            const absoluteFinalNow = new Date();
-            const absoluteFinalDiff = scheduledDate.getTime() - absoluteFinalNow.getTime();
-            
-            if (absoluteFinalDiff <= 0) {
-              console.error(`  ✗ 오류: 스케줄링 시간이 현재 시간보다 과거이거나 같아 스케줄링을 건너뜁니다`);
-              console.error(`    현재 시간: ${absoluteFinalNow.toLocaleString()}`);
-              console.error(`    스케줄링 시간: ${scheduledDate.toLocaleString()}`);
-              continue; // 이 알림은 스케줄링하지 않음
-            }
-            
-            // 알림 설정에서 선택한 시간에 정확히 스케줄링
-            // 예: 1시 19분에 저장하고 1시 21분을 선택했으면 → 1시 21분에 정확히 발송
-            const notificationId = await Notifications.scheduleNotificationAsync({
-              content,
-              trigger: {
-                hour: hour24,
-                minute: alarm.minute,
-                repeats: true,
-              },
-            });
-            
-            console.log(`  - 스케줄링 완료: 알림 ID ${notificationId}`);
-            console.log(`  - 설정한 발송 시간: ${scheduledDate.toLocaleString()} (${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)})`);
-            console.log(`  - 발송까지 남은 시간: ${minutesUntilNotification}분 ${secondsUntilNotification}초`);
-            
-            // 스케줄링 직후 발송되는 알림을 필터링하기 위해 ID 저장
-            // (App.js의 알림 리스너에서 사용)
-            
-            scheduledCount++;
-            const timeDesc = firstNotificationTime > todayAtTime ? '내일부터' : '오늘부터';
-            const savedTime = new Date();
-            
-            console.log(`[알림 설정] 알림 스케줄링 완료 [${scheduledCount}/${alarmsList.length}]`);
-            console.log(`  - 알림 설정에서 선택한 시간: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (매일 이 시간에 발송)`);
-            console.log(`  - 저장한 시간: ${savedTime.toLocaleString()} (저장 시간은 알림 발송과 무관)`);
-            console.log(`  - 첫 알림 발송 시간: ${firstNotificationTime.toLocaleString()} (${timeDesc})`);
-            console.log(`  - 첫 알림까지 남은 시간: ${minutesUntilNotification}분`);
-            console.log(`  - 알림 ID: ${notificationId}`);
-            console.log(`  - 매일 반복: 예 (매일 ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}에 발송)`);
-            
-            // 검증: 선택한 시간과 실제 스케줄링된 시간이 일치하는지 확인
-            const scheduledHour = firstNotificationTime.getHours();
-            const scheduledMinute = firstNotificationTime.getMinutes();
-            const expectedHour24 = hour24;
-            const expectedMinute = alarm.minute;
-            
-            // 실제 스케줄링된 알림 정보 확인
-            const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
-            const thisNotification = scheduledNotifications.find(n => n.identifier === notificationId);
-            
-            if (thisNotification && thisNotification.trigger && thisNotification.trigger.date) {
-              const actualScheduledTime = new Date(thisNotification.trigger.date);
-              const actualHour = actualScheduledTime.getHours();
-              const actualMinute = actualScheduledTime.getMinutes();
-              
-              console.log(`  - 실제 스케줄링된 알림 시간: ${actualHour}:${pad2(actualMinute)}`);
-              console.log(`  - 예상 시간: ${expectedHour24}:${pad2(expectedMinute)}`);
-              
-              if (actualHour === expectedHour24 && actualMinute === expectedMinute && timeUntilNotification >= 60000) {
-                console.log(`  ✓ 검증 성공: 스케줄링된 시간(${actualHour}:${pad2(actualMinute)})이 선택한 시간(${expectedHour24}:${pad2(expectedMinute)})과 일치하고, ${minutesUntilNotification}분 후에 발송됩니다`);
-              } else {
-                console.warn(`  ✗ 검증 실패: 스케줄링된 시간(${actualHour}:${pad2(actualMinute)})이 선택한 시간(${expectedHour24}:${pad2(expectedMinute)})과 일치하지 않거나, ${minutesUntilNotification}분 후에 발송되어 즉시 발송될 수 있습니다!`);
-              }
-            } else {
-              console.warn(`  ⚠️ 경고: 스케줄링된 알림 정보를 확인할 수 없습니다`);
-            }
-          } catch (e) {
-            console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
-          }
-        } else if (alarm.selectedYMD) {
-          // 특정 날짜: 저장된 시간(hour, minute)과 날짜를 사용하여 정확한 시간에 발송
-          const when = new Date(
-            alarm.selectedYMD.year,
-            alarm.selectedYMD.month,
-            alarm.selectedYMD.day,
-            hour24,              // 저장된 hour를 24시간 형식으로 변환한 값
-            alarm.minute,        // 저장된 minute 값
-            0,
-            0
-          );
-          const now = new Date();
-          // 미래 시간이면 스케줄링 (설정한 시간 이후로 바로 발송)
-          if (when > now) {
-            try {
-              const timeUntilNotification = when.getTime() - now.getTime();
-              const minutesUntilNotification = Math.floor(timeUntilNotification / 60000);
-              
-              const notificationId = await Notifications.scheduleNotificationAsync({
-                content,
-                trigger: { date: when },
-              });
-              scheduledCount++;
-              const savedTime = new Date();
-              console.log(`[알림 설정] 알림 스케줄링 완료 [${scheduledCount}/${alarmsList.length}]`);
-              console.log(`  - 알림 설정에서 선택한 시간: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`);
-              console.log(`  - 저장한 시간: ${savedTime.toLocaleString()}`);
-              console.log(`  - 특정 날짜: ${alarm.selectedYMD.year}-${pad2(alarm.selectedYMD.month + 1)}-${pad2(alarm.selectedYMD.day)}`);
-              console.log(`  - 알림 발송 시간: ${when.toLocaleString()} (설정한 시간에 정확히 발송)`);
-              console.log(`  - 발송까지 남은 시간: ${minutesUntilNotification}분`);
-              console.log(`  - 알림 ID: ${notificationId}`);
-            } catch (e) {
-              console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
-            }
-          }
-        }
-      }
-      console.log(`총 ${scheduledCount}개의 알림이 스케줄링되었습니다. (각 알림은 설정한 시간에 정확히 1개씩만 발송됩니다)`);
-    } catch (e) {
-      console.warn('알림 예약 오류:', e);
+  for (const alarm of alarmsList) {
+    if (alarm.repeatDaily) {
+      await scheduleDailyAlarm(alarm);
+    } else {
+      await scheduleOneTimeAlarm(alarm);
     }
-  };
+  }
+};
+
 
   // 모든 알림 스케줄링 (앱 시작 시 사용)
   const applyAllSchedules = applyAllSchedulesSafely;

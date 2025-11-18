@@ -3,6 +3,7 @@ import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
+import { ensureLocalNotificationsReady } from './localNotifications';
 
 import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
@@ -25,12 +26,9 @@ export default function App() {
   const responseListener = useRef();
 
   useEffect(() => {
-    // 1) 권한 요청
+    // 1) 로컬 알림 채널 & 권한 준비
     (async () => {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== 'granted') {
-        await Notifications.requestPermissionsAsync();
-      }
+      await ensureLocalNotificationsReady();
     })();
 
     // 2) 알림 수신 리스너(앱 열려 있을 때)

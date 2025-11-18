@@ -1,10 +1,11 @@
 // HomeScreen.js
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import TreeForest from './TreeForest';
 import GiftRecommend from './GiftRecommend';
 import * as Notifications from 'expo-notifications';
+import { LOCAL_NOTIFICATION_CHANNEL_ID } from './localNotifications';
 
 const getTimeSlot = () => {
   const h = new Date().getHours();
@@ -23,13 +24,19 @@ const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // 🔔 즉시 알림 테스트용 함수
 const sendTestNotification = async () => {
+  const trigger =
+    Platform.OS === 'android'
+      ? { seconds: 1, channelId: LOCAL_NOTIFICATION_CHANNEL_ID }
+      : { seconds: 1 };
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title: '보들보틀 🌱',
       body: '지금 물 1컵 마실 시간이에요!',
       data: { screen: 'Home' },
+      sound: 'default',
     },
-    trigger: null, // null이면 즉시 발송
+    trigger,
   });
 };
 

@@ -305,6 +305,329 @@ const NotificationsScreen = () => {
     </View>
   );
 
+  // 시간 설정 상태 (추가/수정 모드에서 사용)
+  const [hour, setHour] = useState(init12);
+  const [minute, setMinute] = useState(now.getMinutes());
+  const [ampm, setAmPm] = useState(initAmPm);
+  const [message, setMessage] = useState('작은 한 걸음, 지금 시작해요!');
+  const [repeatDaily, setRepeatDaily] = useState(true);
+  const [selectedYMD, setSelectedYMD] = useState({
+    year: now.getFullYear(),
+    month: now.getMonth(),
+    day: now.getDate(),
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+
+  // AsyncStorage 키
+  const STORAGE_KEY = '@bottle_alarms';
+
+  // AsyncStorage null 체크 헬퍼
+  const isAsyncStorageAvailable = () => {
+    return AsyncStorage !== null && AsyncStorage !== undefined;
+  };
+
+  // 알림 목록 저장
+  const saveAlarmsToStorage = async (alarmsList) => {
+    try {
+      if (!isAsyncStorageAvailable()) {
+        console.warn('AsyncStorage를 사용할 수 없습니다.');
+        return;
+      }
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(alarmsList));
+    } catch (e) {
+      console.warn('알림 저장 오류:', e);
+    }
+  };
+
+  const pad2 = (n) => String(n).padStart(2, '0');
+  const as24h = (h12, meridiem) => {
+    if (meridiem === 'AM') return h12 % 12;
+    return (h12 % 12) + 12;
+  };
+
+  // 안전한 알림 스케줄링 (오늘 시간이 지났는지 확인하여 즉시 발송 방지)
+  const applyAllSchedulesSafely = async (alarmsList = alarms) => {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+
+      for (const alarm of alarmsList) {
+        const hour24 = as24h(alarm.hour, alarm.ampm);
+        const content = {
+          title: '보들보틀 🌱',
+          body: alarm.message || `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} 알림이에요.`,
+          data: { screen: 'Home', alarmId: alarm.id },
+        };
+
+        if (alarm.repeatDaily) {
+          // 매일 반복: hour와 minute만 사용 (가장 안정적인 방법)
+          // 이 방식은 오늘 시간이 지났어도 내일부터 자동으로 시작
+          // 저장 시 즉시 알림이 나오지 않음 (오늘 시간이 지났으면 내일부터 시작)
+          try {
+            const notificationId = await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: { 
+                hour: hour24, 
+                minute: alarm.minute, 
+                repeats: true 
+              },
+            });
+            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (ID: ${notificationId})`);
+          } catch (e) {
+            console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
+          }
+        } else if (alarm.selectedYMD) {
+          const when = new Date(
+            alarm.selectedYMD.year,
+            alarm.selectedYMD.month,
+            alarm.selectedYMD.day,
+            hour24,
+            alarm.minute,
+            0,
+            0
+          );
+          // 미래 시간인지 확인 (과거 시간이면 스케줄링 안 함)
+          if (when > new Date()) {
+            await Notifications.scheduleNotificationAsync({
+              content,
+              trigger: { date: when },
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('알림 예약 오류:', e);
+    }
+  };
+
+  // 모든 알림 스케줄링 (앱 시작 시 사용)
+  const applyAllSchedules = applyAllSchedulesSafely;
+
+  // 저장된 알림 불러오기 (스케줄링은 하지 않음 - 이미 스케줄링되어 있음)
+  const loadAlarms = async () => {
+    try {
+      if (!isAsyncStorageAvailable()) {
+        console.warn('AsyncStorage를 사용할 수 없습니다.');
+        return;
+      }
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsedAlarms = JSON.parse(stored);
+        setAlarms(parsedAlarms);
+        // 스케줄링은 하지 않음 - 알림은 이미 시스템에 등록되어 있음
+        // 저장/수정/삭제 시에만 스케줄링을 업데이트함
+      }
+    } catch (e) {
+      console.warn('알림 불러오기 오류:', e);
+    }
+  };
+
+  // 저장된 알림 불러오기 (페이지 진입 시 목록만 표시, 스케줄링은 하지 않음)
+  useEffect(() => {
+    loadAlarms();
+  }, []);
+
+  // 12시간/60분 기본 목록
+  const hours12 = useMemo(() => Array.from({ length: 12 }, (_, i) => i + 1), []);
+  const minutes60 = useMemo(() => Array.from({ length: 60 }, (_, i) => i), []);
+
+  // 무한 스크롤 느낌을 위한 반복 블록
+  const REPEAT = 5;
+  const hoursLoop = useMemo(() => Array.from({ length: REPEAT }).flatMap(() => hours12), [hours12]);
+  const minutesLoop = useMemo(() => Array.from({ length: REPEAT }).flatMap(() => minutes60), [minutes60]);
+  const MID_BLOCK = Math.floor(REPEAT / 2);
+
+  const H_ITEM_H = 40;
+  const M_ITEM_H = 40;
+  const VISIBLE_ROWS = 5;
+  const WHEEL_H = VISIBLE_ROWS * H_ITEM_H;
+
+  const hourRef = useRef(null);
+  const minuteRef = useRef(null);
+  const [hourLoopIndex, setHourLoopIndex] = useState(0);
+  const [minuteLoopIndex, setMinuteLoopIndex] = useState(0);
+
+  // 수정 모드일 때 기존 알림 값으로 초기화
+  useEffect(() => {
+    if (editingId !== null) {
+      const alarm = alarms.find(a => a.id === editingId);
+      if (alarm) {
+        setHour(alarm.hour);
+        setMinute(alarm.minute);
+        setAmPm(alarm.ampm);
+        setMessage(alarm.message || '작은 한 걸음, 지금 시작해요!');
+        setRepeatDaily(alarm.repeatDaily);
+        if (alarm.selectedYMD) {
+          setSelectedYMD(alarm.selectedYMD);
+        }
+      }
+    } else if (isAdding) {
+      // 새로 추가할 때는 현재 시간으로 초기화
+      const now = new Date();
+      const init24 = now.getHours();
+      const init12 = ((init24 % 12) || 12);
+      const initAmPm = init24 >= 12 ? 'PM' : 'AM';
+      setHour(init12);
+      setMinute(now.getMinutes());
+      setAmPm(initAmPm);
+      setMessage('작은 한 걸음, 지금 시작해요!');
+      setRepeatDaily(true);
+      setSelectedYMD({
+        year: now.getFullYear(),
+        month: now.getMonth(),
+        day: now.getDate(),
+      });
+    }
+  }, [editingId, isAdding, alarms]);
+
+  // 가운데 블록 기준 초기 위치
+  const startHourIndex = MID_BLOCK * hours12.length + (hour - 1);
+  const startMinuteIndex = MID_BLOCK * minutes60.length + minute;
+
+  // 초기 위치로 스크롤 (시간 변경 시)
+  useEffect(() => {
+    if (isAdding || editingId !== null) {
+      setTimeout(() => {
+        hourRef.current?.scrollTo({ y: startHourIndex * H_ITEM_H, animated: false });
+        minuteRef.current?.scrollTo({ y: startMinuteIndex * M_ITEM_H, animated: false });
+        setHourLoopIndex(startHourIndex);
+        setMinuteLoopIndex(startMinuteIndex);
+      }, 100);
+    }
+  }, [hour, minute, isAdding, editingId]);
+
+  const snapToNearest = (y, itemH) => Math.round(y / itemH);
+
+  const ensureMiddleBlock = (idx, baseLen, totalLen) => {
+    const within = ((idx % baseLen) + baseLen) % baseLen;
+    const nearEdge = idx <= baseLen || idx >= totalLen - baseLen;
+    const middleIdx = MID_BLOCK * baseLen + within;
+    return { within, nearEdge, middleIdx };
+  };
+
+  const onHourScrollEnd = (e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    let idx = snapToNearest(y, H_ITEM_H);
+
+    const baseLen = hours12.length;
+    const totalLen = hoursLoop.length;
+    const { within, nearEdge, middleIdx } = ensureMiddleBlock(idx, baseLen, totalLen);
+    const val = within + 1;
+    setHour(val);
+    setHourLoopIndex(nearEdge ? middleIdx : idx);
+
+    if (nearEdge) {
+      requestAnimationFrame(() => {
+        hourRef.current?.scrollTo({ y: middleIdx * H_ITEM_H, animated: false });
+      });
+      return;
+    }
+    hourRef.current?.scrollTo({ y: idx * H_ITEM_H, animated: true });
+  };
+
+  const onMinuteScrollEnd = (e) => {
+    const y = e.nativeEvent.contentOffset.y;
+    let idx = snapToNearest(y, M_ITEM_H);
+
+    const baseLen = minutes60.length;
+    const totalLen = minutesLoop.length;
+    const { within, nearEdge, middleIdx } = ensureMiddleBlock(idx, baseLen, totalLen);
+    const val = within;
+    setMinute(val);
+    setMinuteLoopIndex(nearEdge ? middleIdx : idx);
+
+    if (nearEdge) {
+      requestAnimationFrame(() => {
+        minuteRef.current?.scrollTo({ y: middleIdx * M_ITEM_H, animated: false });
+      });
+      return;
+    }
+    minuteRef.current?.scrollTo({ y: idx * M_ITEM_H, animated: true });
+  };
+
+  const toggleAmPm = (next) => setAmPm(next);
+
+  // 알림 저장
+  const saveAlarm = async () => {
+    const newAlarm = {
+      id: editingId || Date.now().toString(),
+      hour,
+      minute,
+      ampm,
+      message,
+      repeatDaily,
+      selectedYMD: repeatDaily ? null : { ...selectedYMD },
+    };
+
+    let updatedAlarms;
+    if (editingId) {
+      updatedAlarms = alarms.map(a => a.id === editingId ? newAlarm : a);
+      setAlarms(updatedAlarms);
+      setEditingId(null);
+    } else {
+      updatedAlarms = [...alarms, newAlarm];
+      setAlarms(updatedAlarms);
+      setIsAdding(false);
+    }
+
+    // AsyncStorage에 저장만 함 (스케줄링은 하지 않음)
+    // 스케줄링은 앱 시작 시에만 실행되어 즉시 알림 방지
+    await saveAlarmsToStorage(updatedAlarms);
+    
+    // 앱을 재시작하면 자동으로 스케줄링됨
+    // 또는 수동으로 스케줄링하려면 앱을 완전히 종료 후 다시 시작
+  };
+
+  // 취소
+  const cancelEdit = () => {
+    setIsAdding(false);
+    setEditingId(null);
+  };
+
+  // 알림 삭제
+  const deleteAlarm = async (id) => {
+    const newAlarms = alarms.filter(a => a.id !== id);
+    setAlarms(newAlarms);
+    // AsyncStorage에 저장만 함 (스케줄링은 하지 않음)
+    await saveAlarmsToStorage(newAlarms);
+    
+    // 모든 알림을 취소 (앱 재시작 시 자동으로 재스케줄링됨)
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+    } catch (e) {
+      console.warn('알림 삭제 오류:', e);
+    }
+  };
+
+  const sendTestNow = async () => {
+    try {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '보들보틀 🌱',
+          body: message || '테스트 알림입니다.',
+          data: { screen: 'Home' },
+        },
+        trigger: null,
+      });
+    } catch (e) {
+      console.warn('즉시 알림 오류:', e);
+    }
+  };
+
+  const clearAllSchedules = async () => {
+    try {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      setAlarms([]);
+      // AsyncStorage에서도 삭제
+      if (isAsyncStorageAvailable()) {
+        await AsyncStorage.removeItem(STORAGE_KEY);
+      }
+    } catch (e) {
+      console.warn('알림 해제 오류:', e);
+    }
+  };
+
+  // 알림이 없고 추가 모드도 아닐 때
+  if (alarms.length === 0 && !isAdding) {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -466,6 +789,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
   heroTitle: {
     color: '#fff',

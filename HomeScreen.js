@@ -121,13 +121,23 @@ const HomeScreen = ({ navigation }) => {
       return [...prev, ...newTrees];
     });
 
-    // 🔹 미션 기록 추가
+    // 🔹 미션 기록 추가 (로컬 시간 기준으로 저장)
     const now = new Date();
+    // 로컬 시간 기준으로 연/월/일/시/분/초를 저장 (타임존 문제 방지)
+    const localTime = {
+      year: now.getFullYear(),
+      month: now.getMonth(),
+      date: now.getDate(),
+      hours: now.getHours(),
+      minutes: now.getMinutes(),
+      seconds: now.getSeconds(),
+      timestamp: now.getTime(), // 정렬용
+    };
     setMissionHistory((prev) => [
       {
         id: `${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
         mission: selectedMission,
-        completedAt: now.toISOString(),
+        completedAt: localTime, // ISO 문자열 대신 로컬 시간 객체 사용
         timeSlot,
         emoji: config.emoji || '🌳',
       },
@@ -205,6 +215,16 @@ const HomeScreen = ({ navigation }) => {
           onPress={() => navigation.navigate('Notifications')}
         >
           <Text style={styles.btnSecondaryText}>알림 커스터마이징</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* 캘린더 버튼 */}
+      <View style={{ marginTop: 16 }}>
+        <TouchableOpacity
+          style={[styles.btn, styles.btnOutline]}
+          onPress={() => navigation.navigate('Calendar', { history: missionHistory })}
+        >
+          <Text style={styles.btnOutlineText}>📅 캘린더 보기</Text>
         </TouchableOpacity>
       </View>
 

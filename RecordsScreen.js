@@ -1,16 +1,28 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity, Modal } from 'react-native';
 
-// 날짜 형식 변환 함수
-const formatDate = (isoString) => {
-  const date = new Date(isoString);
+// 날짜 형식 변환 함수 (로컬 시간 객체 또는 ISO 문자열 모두 지원)
+const formatDate = (completedAt) => {
+  // 로컬 시간 객체인 경우
+  if (completedAt && typeof completedAt === 'object' && completedAt.year !== undefined) {
+    return `${completedAt.year}-${String(completedAt.month + 1).padStart(2, '0')}-${String(
+      completedAt.date
+    ).padStart(2, '0')}`;
+  }
+  // ISO 문자열인 경우 (하위 호환성)
+  const date = new Date(completedAt);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
     date.getDate()
   ).padStart(2, '0')}`;
 };
 
-const formatTime = (isoString) => {
-  const date = new Date(isoString);
+const formatTime = (completedAt) => {
+  // 로컬 시간 객체인 경우
+  if (completedAt && typeof completedAt === 'object' && completedAt.hours !== undefined) {
+    return `${String(completedAt.hours).padStart(2, '0')}:${String(completedAt.minutes).padStart(2, '0')}`;
+  }
+  // ISO 문자열인 경우 (하위 호환성)
+  const date = new Date(completedAt);
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 };
 

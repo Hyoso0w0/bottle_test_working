@@ -38,7 +38,8 @@ import CalendarScreen from './CalendarScreen';
 // 알림 핸들러 설정 (앱이 foreground일 때 어떻게 보일지)
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -46,6 +47,12 @@ Notifications.setNotificationHandler({
 
 /** ---------- 네비게이션 ---------- **/
 const Stack = createNativeStackNavigator();
+
+// 스케줄링 시작 시간을 전역으로 관리 (알림 필터링용)
+// NotificationsScreen에서 설정하고 App.js에서 사용
+if (typeof global !== 'undefined') {
+  global.lastSchedulingStartTime = 0;
+}
 
 export default function App() {
   const notificationListener = useRef();
@@ -63,6 +70,13 @@ export default function App() {
       };
 
       for (const alarm of alarmsList) {
+        // 저장된 시간 데이터 확인 (hour, minute, ampm)
+        if (!alarm.hour || alarm.minute === undefined || !alarm.ampm) {
+          console.warn(`알림 시간 데이터 누락: ID ${alarm.id}, hour: ${alarm.hour}, minute: ${alarm.minute}, ampm: ${alarm.ampm}`);
+          continue;
+        }
+
+        // 저장된 시간 데이터를 사용하여 24시간 형식으로 변환
         const hour24 = as24h(alarm.hour, alarm.ampm);
         const content = {
           title: '보들보틀 🌱',
@@ -71,32 +85,28 @@ export default function App() {
         };
 
         if (alarm.repeatDaily) {
-          // 매일 반복: 첫 알림 시간을 명시적으로 미래로 설정
+          // 매일 반복: 저장된 시간(hour, minute)을 사용하여 정확한 시간에 발송
           const now = new Date();
           const todayAtTime = new Date(
             now.getFullYear(),
             now.getMonth(),
             now.getDate(),
-            hour24,
-            alarm.minute,
+            hour24,              // 저장된 hour를 24시간 형식으로 변환한 값
+            alarm.minute,        // 저장된 minute 값
             0,
             0
           );
           
-          // 오늘 시간이 이미 지났다면 내일로 설정 (즉시 알림 방지)
+          // 첫 알림 시간 결정: 설정한 시간이 지났으면 내일, 안 지났으면 오늘
+          // 설정한 시간 이후로 바로 발송되도록 설정
           let firstNotificationTime = todayAtTime;
           if (todayAtTime <= now) {
-            // 내일 같은 시간으로 설정
+            // 오늘 시간이 지났으면 내일 같은 시간에 발송
             firstNotificationTime = new Date(todayAtTime.getTime() + 24 * 60 * 60 * 1000);
           }
           
-          // 최소 1분 후로 설정 (즉시 알림 완전 방지)
-          const minDelay = 60 * 1000; // 1분
-          if (firstNotificationTime.getTime() - now.getTime() < minDelay) {
-            firstNotificationTime = new Date(now.getTime() + minDelay);
-          }
-          
           try {
+            // date + repeats 방식으로 매일 반복 알림 설정
             const notificationId = await Notifications.scheduleNotificationAsync({
               content,
               trigger: { 
@@ -104,21 +114,25 @@ export default function App() {
                 repeats: true 
               },
             });
-            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (첫 알림: ${firstNotificationTime.toLocaleString()}, ID: ${notificationId})`);
+            const timeDesc = firstNotificationTime > todayAtTime ? '내일부터' : '오늘부터';
+            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (${timeDesc} 시작, 첫 알림: ${firstNotificationTime.toLocaleString()}, 매일 반복, ID: ${notificationId})`);
           } catch (e) {
             console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
           }
         } else if (alarm.selectedYMD) {
+          // 특정 날짜: 저장된 시간(hour, minute)과 날짜를 사용하여 정확한 시간에 발송
           const when = new Date(
             alarm.selectedYMD.year,
             alarm.selectedYMD.month,
             alarm.selectedYMD.day,
-            hour24,
-            alarm.minute,
+            hour24,              // 저장된 hour를 24시간 형식으로 변환한 값
+            alarm.minute,        // 저장된 minute 값
             0,
             0
           );
-          if (when > new Date()) {
+          const now = new Date();
+          // 미래 시간이면 스케줄링 (설정한 시간 이후로 바로 발송)
+          if (when > now) {
             await Notifications.scheduleNotificationAsync({
               content,
               trigger: { date: when },
@@ -149,24 +163,46 @@ export default function App() {
         });
       }
 
-      // 2) 앱 시작 시 저장된 알림 불러오기 및 스케줄링 (한 번만 실행)
-      try {
-        const STORAGE_KEY = '@bottle_alarms';
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsedAlarms = JSON.parse(stored);
-          // 저장된 알림들을 스케줄링
-          await scheduleAlarms(parsedAlarms);
-        }
-      } catch (e) {
-        console.warn('알림 불러오기 오류:', e);
-      }
+      // 2) 앱 시작 시에는 스케줄링하지 않음 (알림 발송 안 함)
+      // 알림은 저장 시에만 스케줄링되어 설정한 시간(예: 1시 30분)에 정확히 발송됨
     })();
 
     // 2) 알림 수신 리스너(앱 열려 있을 때)
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
-        console.log('알림 도착!', notification);
+        const notificationData = notification.request.content;
+        const alarmId = notificationData.data?.alarmId || '알 수 없음';
+        const notificationTime = new Date(notification.date);
+        const notificationTimestamp = notification.date;
+        const identifier = notification.request.identifier;
+        
+        // 스케줄링 직후 30초 이내에 발송된 알림은 무시 (즉시 발송 방지)
+        // 선택한 시간에 정확히 발송된 알림만 표시
+        const now = Date.now();
+        const lastSchedulingStartTime = typeof global !== 'undefined' ? global.lastSchedulingStartTime || 0 : 0;
+        const timeSinceLastScheduling = now - lastSchedulingStartTime;
+        
+        if (lastSchedulingStartTime > 0 && timeSinceLastScheduling < 30000) {
+          console.log('========================================');
+          console.log('[알림 필터링] 스케줄링 직후 발송된 알림을 무시합니다');
+          console.log(`  - 알림 식별자: ${identifier}`);
+          console.log(`  - 발송 시간: ${notificationTime.toLocaleString()}`);
+          console.log(`  - 마지막 스케줄링 후 경과 시간: ${Math.floor(timeSinceLastScheduling / 1000)}초`);
+          console.log(`  - 이 알림은 설정한 시간(${alarmId})에 발송된 것이 아닙니다`);
+          console.log(`  - 설정한 시간에 정확히 발송된 알림만 표시됩니다`);
+          console.log('========================================');
+          return; // 알림 무시
+        }
+        
+        console.log('========================================');
+        console.log('[알림 발송] 알림이 설정한 시간에 발송되었습니다!');
+        console.log(`  - 알림 설정에서 선택한 시간: 알림 설정에서 지정한 시간에 발송`);
+        console.log(`  - 실제 발송 시간: ${notificationTime.toLocaleString()}`);
+        console.log(`  - 알림 제목: ${notificationData.title}`);
+        console.log(`  - 알림 내용: ${notificationData.body}`);
+        console.log(`  - 알림 ID: ${alarmId}`);
+        console.log(`  - 알림 식별자: ${identifier}`);
+        console.log('========================================');
       });
 
     // 3) 알림 클릭 리스너

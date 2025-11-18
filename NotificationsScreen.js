@@ -15,74 +15,94 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import AlarmSetting from './AlarmSetting';
 import { ensureLocalNotificationsReady, LOCAL_NOTIFICATION_CHANNEL_ID } from './localNotifications';
 
-const STORAGE_KEY = 'user_alarms';
-const DAY_OPTIONS = ['월', '화', '수', '목', '금', '토', '일'];
-const DAY_TO_WEEKDAY = {
-  일: 1,
-  월: 2,
-  화: 3,
-  수: 4,
-  목: 5,
-  금: 6,
-  토: 7,
+const getNextTriggerDate = (hour, minute, ampm) => {
+  const h24 = ampm === "PM" ? (hour % 12) + 12 : hour % 12;
+
+  const now = new Date();
+  const next = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    h24,
+    minute,
+    0,
+    0
+  );
+
+  // 이미 지났으면 다음날
+  if (next <= now) {
+    next.setDate(next.getDate() + 1);
+  }
+
+  return next;
 };
 
-const PRESET_REMINDERS = [
-  {
-    id: 'preset-1',
-    emoji: '🛍️',
-    title: '장바구니 챙기기',
-    time: '07:30',
-    days: ['월', '화', '수', '목', '금'],
-    description: '출근 전에 장바구니 확인하기',
-  },
-  {
-    id: 'preset-2',
-    emoji: '☕',
-    title: '출근 전 텀블러 챙기기',
-    time: '08:45',
-    days: ['월', '화', '수', '목', '금'],
-    description: '텀블러와 보틀을 들고 출근 준비',
-  },
-  {
-    id: 'preset-3',
-    emoji: '🧽',
-    title: '자기 전 텀블러 씻기',
-    time: '21:30',
-    days: ['월', '화', '수', '목', '금'],
-    description: '다음 날을 위해 깨끗하게 세척하기',
-  },
-  {
-    id: 'preset-4',
-    emoji: '♻️',
-    title: '취침 전 분리수거 체크',
-    time: '22:00',
-    days: ['월', '수', '금'],
-    description: '분리수거 배출일 다시 확인',
-  },
-  {
-    id: 'preset-5',
-    emoji: '🍳',
-    title: '외식 대신 집에서 저녁 먹기',
-    time: '18:00',
-    days: ['화', '목', '토'],
-    description: '집밥으로 쓰레기 줄이기',
-  },
-];
+const scheduleDailyAlarm = async (alarm) => {
+  const nextTime = getNextTriggerDate(
+    alarm.hour,
+    alarm.minute,
+    alarm.ampm
+  );
 
-const migrateAlarm = (alarm, idx) => {
-  const safeTime = alarm.time ?? '09:00';
-  const safeDays =
-    Array.isArray(alarm.days) && alarm.days.length > 0 ? alarm.days : ['월', '화', '수', '목', '금'];
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "보들보틀 🌱",
+      body: alarm.message,
+      data: { alarmId: alarm.id },
+    },
+    trigger:  { type: 'date', date: nextTime },  // 🔥 repeats 없음 → 즉시 발송 방지 핵심
+  });
 
-  return {
-    id: alarm.id ?? Date.now() + idx,
-    title: alarm.title ?? alarm.label ?? '새 알림',
-    emoji: alarm.emoji ?? '🌱',
-    time: safeTime,
-    days: safeDays,
-    enabled: typeof alarm.enabled === 'boolean' ? alarm.enabled : true,
-    notificationIds: alarm.notificationIds ?? (alarm.notificationId ? [alarm.notificationId] : []),
+  return notificationId;
+};
+const scheduleOneTimeAlarm = async (alarm) => {
+  const { year, month, day } = alarm.selectedYMD;
+  const h24 = alarm.ampm === "PM" ? (alarm.hour % 12) + 12 : alarm.hour % 12;
+
+  const date = new Date(year, month, day, h24, alarm.minute, 0, 0);
+  const now = new Date();
+
+  if (date <= now) return null;
+
+  const notificationId = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "보들보틀 🌱",
+      body: alarm.message,
+      data: { alarmId: alarm.id },
+    },
+    trigger: {
+      type: 'date',
+      date: date,
+    },
+  });
+
+  return notificationId;
+};
+
+// AsyncStorage 안전하게 import
+let AsyncStorage;
+try {
+  const AsyncStorageModule = require('@react-native-async-storage/async-storage');
+  AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
+  // null 체크
+  if (!AsyncStorage || AsyncStorage === null) {
+    throw new Error('AsyncStorage is null');
+  }
+} catch (e) {
+  console.warn('AsyncStorage를 로드할 수 없습니다:', e);
+  // 폴백: 메모리 저장소 (앱 재시작 시 데이터는 사라짐)
+  const memoryStorage = {};
+  AsyncStorage = {
+    _storage: memoryStorage,
+    async getItem(key) {
+      return this._storage[key] || null;
+    },
+    async setItem(key, value) {
+      this._storage[key] = value;
+    },
+    async removeItem(key) {
+      delete this._storage[key];
+    },
   };
 };
 
@@ -149,161 +169,28 @@ const cancelReminderNotifications = async (notificationIds = []) => {
 const NotificationsScreen = () => {
   useLocalNotificationSetup();
 
-  const [alarms, setAlarms] = useState([]);
-  const [formVisible, setFormVisible] = useState(false);
-  const [editingAlarm, setEditingAlarm] = useState(null);
-  const [recommendedVisible, setRecommendedVisible] = useState(false);
-
+   // 🔥🔥🔥 여기 아래 넣으면 정확하게 맞음
   useEffect(() => {
-    const loadAlarms = async () => {
-      try {
+    (async () => {
+      const { status } = await Notifications.requestPermissionsAsync();
+      console.log("알림 권한 상태:", status);
 
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        let parsed = stored ? JSON.parse(stored) : [];
-
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          parsed = PRESET_REMINDERS.slice(0, 2).map((preset, idx) =>
-            migrateAlarm({ ...preset, id: idx + 1 }, idx),
-          );
-        } else {
-          parsed = parsed.map(migrateAlarm);
-        }
-
-        setAlarms(parsed);
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-      } catch (error) {
-        console.error('Failed to load alarms:', error);
+      // Android는 알림 채널도 필요
+      if (Platform.OS === "android") {
+        await Notifications.setNotificationChannelAsync("default", {
+          name: "default",
+          importance: Notifications.AndroidImportance.HIGH,
+        });
       }
-    };
-
-    loadAlarms();
+    })();
   }, []);
-
-  useEffect(() => {
-    const persist = async () => {
-      try {
-        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(alarms));
-      } catch (error) {
-        console.error('Failed to save alarms:', error);
-      }
-    };
-
-    if (alarms.length >= 0) {
-      persist();
-    }
-  }, [alarms]);
-
-  const featuredPreset = PRESET_REMINDERS[0];
-
-  const formattedAlarms = useMemo(
-    () =>
-      [...alarms].sort((a, b) => {
-        if (a.enabled !== b.enabled) {
-          return a.enabled ? -1 : 1;
-        }
-        return a.time.localeCompare(b.time);
-      }),
-    [alarms],
-  );
-
-  const openNewForm = () => {
-    setEditingAlarm(null);
-    setFormVisible(true);
-  };
-
-  const handleSaveReminder = async (formValues) => {
-    const base = editingAlarm ?? {};
-    const reminder = {
-      id: base.id ?? Date.now(),
-      title: formValues.title,
-      emoji: formValues.emoji,
-      time: formValues.time,
-      days: formValues.days,
-      enabled: formValues.enabled,
-      notificationIds: [],
-    };
-
-    if (base.notificationIds?.length) {
-      await cancelReminderNotifications(base.notificationIds);
-    }
-
-    if (reminder.enabled) {
-      reminder.notificationIds = await scheduleReminderNotifications(reminder);
-    }
-
-    setAlarms((prev) => {
-      if (base.id) {
-        return prev.map((item) => (item.id === base.id ? reminder : item));
-      }
-      return [...prev, reminder];
-    });
-
-    setFormVisible(false);
-    setEditingAlarm(null);
-  };
-
-  const handleToggle = async (target) => {
-    if (!target) return;
-
-    if (target.enabled) {
-      await cancelReminderNotifications(target.notificationIds);
-    }
-
-    let notificationIds = [];
-    if (!target.enabled) {
-      notificationIds = await scheduleReminderNotifications(target);
-    }
-
-    setAlarms((prev) =>
-      prev.map((alarm) =>
-        alarm.id === target.id
-          ? { ...alarm, enabled: !target.enabled, notificationIds }
-          : alarm,
-      ),
-    );
-  };
-
-  const confirmDelete = (alarm) => {
-    Alert.alert('알림 삭제', `'${alarm.title}' 알림을 삭제할까요?`, [
-      { text: '취소', style: 'cancel' },
-      {
-        text: '삭제',
-        style: 'destructive',
-        onPress: async () => {
-          await cancelReminderNotifications(alarm.notificationIds);
-          setAlarms((prev) => prev.filter((item) => item.id !== alarm.id));
-        },
-      },
-    ]);
-  };
-
-  const handleAddPreset = async (preset) => {
-    const reminder = {
-      id: Date.now(),
-      title: preset.title,
-      emoji: preset.emoji,
-      time: preset.time,
-      days: preset.days,
-      enabled: true,
-      notificationIds: [],
-    };
-
-    reminder.notificationIds = await scheduleReminderNotifications(reminder);
-    setAlarms((prev) => [...prev, reminder]);
-    Alert.alert('추가 완료', `'${preset.title}' 알림이 추가되었어요!`);
-  };
-
-  const formatDays = (days) => {
-    if (!days || days.length === 0 || days.length === 7) return '매일';
-    return days.join(' · ');
-  };
-
-  const EmptyState = () => (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyTitle}>아직 등록한 알림이 없어요</Text>
-      <Text style={styles.emptySub}>상단의 + 버튼을 눌러 첫 번째 알림을 만들어요.</Text>
-    </View>
-  );
+  // 🔥🔥🔥 여기까지
+  
+  // 초기 AM/PM 기준 시간 설정
+  const now = new Date();
+  const init24 = now.getHours();
+  const init12 = ((init24 % 12) || 12);
+  const initAmPm = init24 >= 12 ? 'PM' : 'AM';
 
   // 시간 설정 상태 (추가/수정 모드에서 사용)
   const [hour, setHour] = useState(init12);
@@ -345,59 +232,18 @@ const NotificationsScreen = () => {
     return (h12 % 12) + 12;
   };
 
-  // 안전한 알림 스케줄링 (오늘 시간이 지났는지 확인하여 즉시 발송 방지)
-  const applyAllSchedulesSafely = async (alarmsList = alarms) => {
-    try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
+  const applyAllSchedulesSafely = async (alarmsList) => {
+  await Notifications.cancelAllScheduledNotificationsAsync();
 
-      for (const alarm of alarmsList) {
-        const hour24 = as24h(alarm.hour, alarm.ampm);
-        const content = {
-          title: '보들보틀 🌱',
-          body: alarm.message || `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} 알림이에요.`,
-          data: { screen: 'Home', alarmId: alarm.id },
-        };
-
-        if (alarm.repeatDaily) {
-          // 매일 반복: hour와 minute만 사용 (가장 안정적인 방법)
-          // 이 방식은 오늘 시간이 지났어도 내일부터 자동으로 시작
-          // 저장 시 즉시 알림이 나오지 않음 (오늘 시간이 지났으면 내일부터 시작)
-          try {
-            const notificationId = await Notifications.scheduleNotificationAsync({
-              content,
-              trigger: { 
-                hour: hour24, 
-                minute: alarm.minute, 
-                repeats: true 
-              },
-            });
-            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (ID: ${notificationId})`);
-          } catch (e) {
-            console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
-          }
-        } else if (alarm.selectedYMD) {
-          const when = new Date(
-            alarm.selectedYMD.year,
-            alarm.selectedYMD.month,
-            alarm.selectedYMD.day,
-            hour24,
-            alarm.minute,
-            0,
-            0
-          );
-          // 미래 시간인지 확인 (과거 시간이면 스케줄링 안 함)
-          if (when > new Date()) {
-            await Notifications.scheduleNotificationAsync({
-              content,
-              trigger: { date: when },
-            });
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('알림 예약 오류:', e);
+  for (const alarm of alarmsList) {
+    if (alarm.repeatDaily) {
+      await scheduleDailyAlarm(alarm);
+    } else {
+      await scheduleOneTimeAlarm(alarm);
     }
-  };
+  }
+};
+
 
   // 모든 알림 스케줄링 (앱 시작 시 사용)
   const applyAllSchedules = applyAllSchedulesSafely;
@@ -421,9 +267,10 @@ const NotificationsScreen = () => {
     }
   };
 
-  // 저장된 알림 불러오기 (페이지 진입 시 목록만 표시, 스케줄링은 하지 않음)
+  // 저장된 알림 불러오기 (화면 진입 시 - 스케줄링 안 함)
   useEffect(() => {
     loadAlarms();
+    // 화면 진입 시에는 스케줄링하지 않음 (알림 발송 안 함)
   }, []);
 
   // 12시간/60분 기본 목록
@@ -548,16 +395,25 @@ const NotificationsScreen = () => {
 
   // 알림 저장
   const saveAlarm = async () => {
+    // 시간 데이터 명시적으로 저장 (hour, minute, ampm)
     const newAlarm = {
       id: editingId || Date.now().toString(),
-      hour,
-      minute,
-      ampm,
-      message,
-      repeatDaily,
+      hour: hour,        // 시 (1-12)
+      minute: minute,    // 분 (0-59)
+      ampm: ampm,        // AM/PM
+      message: message || '작은 한 걸음, 지금 시작해요!',
+      repeatDaily: repeatDaily,
       selectedYMD: repeatDaily ? null : { ...selectedYMD },
     };
 
+    // 저장할 시간 데이터 확인 로그
+    console.log('========================================');
+    console.log('[알림 저장] 저장 시작');
+    console.log(`  - 지정한 시간: ${ampm} ${pad2(hour)}:${pad2(minute)}`);
+    console.log(`  - 저장할 데이터: hour=${hour}, minute=${minute}, ampm=${ampm}`);
+    console.log(`  - 매일반복: ${repeatDaily}`);
+    console.log(`  - ID: ${newAlarm.id}`);
+    
     let updatedAlarms;
     if (editingId) {
       updatedAlarms = alarms.map(a => a.id === editingId ? newAlarm : a);
@@ -569,12 +425,30 @@ const NotificationsScreen = () => {
       setIsAdding(false);
     }
 
-    // AsyncStorage에 저장만 함 (스케줄링은 하지 않음)
-    // 스케줄링은 앱 시작 시에만 실행되어 즉시 알림 방지
+    // 저장된 알림 데이터 검증
+    const savedAlarm = updatedAlarms.find(a => a.id === newAlarm.id);
+    if (savedAlarm) {
+      console.log(`  - 저장된 데이터 확인: hour=${savedAlarm.hour}, minute=${savedAlarm.minute}, ampm=${savedAlarm.ampm}`);
+      if (savedAlarm.hour === hour && savedAlarm.minute === minute && savedAlarm.ampm === ampm) {
+        console.log(`  ✓ 저장 성공: 지정한 시간이 정확히 저장되었습니다`);
+      } else {
+        console.warn(`  ✗ 저장 실패: 지정한 시간과 저장된 시간이 일치하지 않습니다!`);
+        console.warn(`    지정한 시간: ${ampm} ${pad2(hour)}:${pad2(minute)}`);
+        console.warn(`    저장된 시간: ${savedAlarm.ampm} ${pad2(savedAlarm.hour)}:${pad2(savedAlarm.minute)}`);
+      }
+    }
+
+    // AsyncStorage에 저장 (시간 데이터 포함)
     await saveAlarmsToStorage(updatedAlarms);
+    console.log(`  - AsyncStorage 저장 완료: 총 ${updatedAlarms.length}개`);
+    console.log('========================================');
     
-    // 앱을 재시작하면 자동으로 스케줄링됨
-    // 또는 수동으로 스케줄링하려면 앱을 완전히 종료 후 다시 시작
+    // 저장 후 모든 알림을 다시 스케줄링 (중복 방지를 위해 모든 알림 취소 후 재스케줄링)
+    // 각 알림은 설정한 시간에 정확히 1개씩만 발송됨
+    // 예: 1시 3분에 저장하고 알림 설정에서 1시 30분을 선택했으면 → 매일 1시 30분에 발송
+    console.log('저장된 알림 스케줄링 시작...');
+    await applyAllSchedulesSafely(updatedAlarms);
+    console.log('저장된 알림 스케줄링 완료');
   };
 
   // 취소
@@ -587,10 +461,11 @@ const NotificationsScreen = () => {
   const deleteAlarm = async (id) => {
     const newAlarms = alarms.filter(a => a.id !== id);
     setAlarms(newAlarms);
-    // AsyncStorage에 저장만 함 (스케줄링은 하지 않음)
+    // AsyncStorage에 저장
     await saveAlarmsToStorage(newAlarms);
     
-    // 모든 알림을 취소 (앱 재시작 시 자동으로 재스케줄링됨)
+    // 삭제 시에는 스케줄링하지 않음 (즉시 알림 완전 방지)
+    // 설정한 시간에 알림이 오려면 앱을 재시작해야 함
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
     } catch (e) {

@@ -38,7 +38,7 @@ const scheduleDailyAlarm = async (alarm) => {
       body: alarm.message,
       data: { alarmId: alarm.id },
     },
-    trigger: nextTime,  // 🔥 repeats 없음 → 즉시 발송 방지 핵심
+    trigger:  { type: 'date', date: nextTime },  // 🔥 repeats 없음 → 즉시 발송 방지 핵심
   });
 
   return notificationId;
@@ -58,7 +58,10 @@ const scheduleOneTimeAlarm = async (alarm) => {
       body: alarm.message,
       data: { alarmId: alarm.id },
     },
-    trigger: date,
+    trigger: {
+      type: 'date',
+      date: date,
+    },
   });
 
   return notificationId;

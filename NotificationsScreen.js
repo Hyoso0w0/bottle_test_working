@@ -1,20 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { StyleSheet, Text, View, TouchableOpacity, ScrollView, TextInput, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  ScrollView,
-  Alert,
-  Platform,
-  Switch,
-  Modal,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import AlarmSetting from './AlarmSetting';
-import { ensureLocalNotificationsReady, LOCAL_NOTIFICATION_CHANNEL_ID } from './localNotifications';
-
+import WeekDaySelect from './WeekDaySelect';
 const getNextTriggerDate = (hour, minute, ampm) => {
   const h24 = ampm === "PM" ? (hour % 12) + 12 : hour % 12;
 
@@ -79,6 +67,48 @@ const scheduleOneTimeAlarm = async (alarm) => {
   return notificationId;
 };
 
+const scheduleWeeklyAlarm = async (alarm) => {
+  const notificationIds = [];
+
+  const now = new Date();
+
+  for (const dayOfWeek of alarm.repeatDays) {
+    let next = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      alarm.ampm === 'PM' ? (alarm.hour % 12) + 12 : alarm.hour % 12,
+      alarm.minute,
+      0,
+      0
+    );
+
+    // Move to the correct day of the week
+    const deltaDays = (dayOfWeek + 7 - next.getDay()) % 7;
+    if (deltaDays === 0 && next <= now) next.setDate(next.getDate() + 7);
+    else next.setDate(next.getDate() + deltaDays);
+
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: '보들보틀 🌱',
+        body: alarm.message,
+        data: { alarmId: alarm.id },
+      },
+      trigger: {
+        type: 'weekly',
+        weekday: dayOfWeek + 1, // 1=Sun, 2=Mon, ... 7=Sat
+        hour: alarm.ampm === 'PM' ? (alarm.hour % 12) + 12 : alarm.hour % 12,
+        minute: alarm.minute,
+      },
+    });
+
+    notificationIds.push(id);
+  }
+
+  return notificationIds;
+};
+
+
 // AsyncStorage 안전하게 import
 let AsyncStorage;
 try {
@@ -104,70 +134,13 @@ try {
       delete this._storage[key];
     },
   };
-};
-
-// Request notification permissions and configure channel for local reminders
-const useLocalNotificationSetup = () => {
-  useEffect(() => {
-    ensureLocalNotificationsReady({ showAlertOnDeny: true });
-  }, []);
-};
-
-const scheduleReminderNotifications = async ({ title, time, days }) => {
-  try {
-    const [hour, minute] = time.split(':').map(Number);
-    //const targets = days && days.length > 0 ? days : DAY_OPTIONS;
-    const createdIds = [];
-
-    for (const day of days) {
-      const weekday = DAY_TO_WEEKDAY[day];
-      const next = new Date();
-      next.setHours(hour, minute, 0, 0);
-
-      while ((next.getDay() === 0 ? 7 : next.getDay()) !== weekday) {
-        next.setDate(next.getDate() + 1);
-      }
-
-      if (next <= new Date()) {
-        next.setDate(next.getDate() + 7);
-      }
-
-      const id = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '보들보틀 🌱',
-          body: title,
-          sound: 'default',
-        },
-        trigger: {
-          date: next,
-          repeats: true,
-        }
-      });
-      createdIds.push(id);
-    }
-    return createdIds;
-  } catch (error) {
-    console.error('Failed to schedule notification:', error);
-    return [];
-  }
-};
-
-const cancelReminderNotifications = async (notificationIds = []) => {
-  try {
-    await Promise.all(
-      notificationIds.map(async (id) => {
-        if (id) {
-          await Notifications.cancelScheduledNotificationAsync(id);
-        }
-      }),
-    );
-  } catch (error) {
-    console.error('Failed to cancel notifications:', error);
-  }
-};
+}
 
 const NotificationsScreen = () => {
-  useLocalNotificationSetup();
+  // 알림 목록 관리
+  const [alarms, setAlarms] = useState([]);
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
    // 🔥🔥🔥 여기 아래 넣으면 정확하게 맞음
   useEffect(() => {
@@ -204,6 +177,7 @@ const NotificationsScreen = () => {
     day: now.getDate(),
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [repeatDays, setRepeatDays] = useState([]);
 
   // AsyncStorage 키
   const STORAGE_KEY = '@bottle_alarms';
@@ -238,6 +212,8 @@ const NotificationsScreen = () => {
   for (const alarm of alarmsList) {
     if (alarm.repeatDaily) {
       await scheduleDailyAlarm(alarm);
+    } else if (alarm.repeatDays?.length) {
+      await scheduleWeeklyAlarm(alarm);
     } else {
       await scheduleOneTimeAlarm(alarm);
     }
@@ -331,16 +307,21 @@ const NotificationsScreen = () => {
   const startMinuteIndex = MID_BLOCK * minutes60.length + minute;
 
   // 초기 위치로 스크롤 (시간 변경 시)
-  useEffect(() => {
-    if (isAdding || editingId !== null) {
-      setTimeout(() => {
-        hourRef.current?.scrollTo({ y: startHourIndex * H_ITEM_H, animated: false });
-        minuteRef.current?.scrollTo({ y: startMinuteIndex * M_ITEM_H, animated: false });
-        setHourLoopIndex(startHourIndex);
-        setMinuteLoopIndex(startMinuteIndex);
-      }, 100);
-    }
-  }, [hour, minute, isAdding, editingId]);
+ // Track whether initial scroll has been applied
+const hasScrolledToInitial = useRef(false);
+
+useEffect(() => {
+  if ((isAdding || editingId !== null) && !hasScrolledToInitial.current) {
+    setTimeout(() => {
+      hourRef.current?.scrollTo({ y: startHourIndex * H_ITEM_H, animated: false });
+      minuteRef.current?.scrollTo({ y: startMinuteIndex * M_ITEM_H, animated: false });
+      setHourLoopIndex(startHourIndex);
+      setMinuteLoopIndex(startMinuteIndex);
+      hasScrolledToInitial.current = true;
+    }, 100);
+  }
+}, [isAdding, editingId]);
+
 
   const snapToNearest = (y, itemH) => Math.round(y / itemH);
 
@@ -351,7 +332,13 @@ const NotificationsScreen = () => {
     return { within, nearEdge, middleIdx };
   };
 
+  const isScrollingProgrammatically = useRef(false);
+
   const onHourScrollEnd = (e) => {
+    if (isScrollingProgrammatically.current) {
+      isScrollingProgrammatically.current = false;
+      return;
+    }
     const y = e.nativeEvent.contentOffset.y;
     let idx = snapToNearest(y, H_ITEM_H);
 
@@ -363,15 +350,20 @@ const NotificationsScreen = () => {
     setHourLoopIndex(nearEdge ? middleIdx : idx);
 
     if (nearEdge) {
-      requestAnimationFrame(() => {
+      isScrollingProgrammatically.current = true;
+      
         hourRef.current?.scrollTo({ y: middleIdx * H_ITEM_H, animated: false });
-      });
+      
       return;
     }
     hourRef.current?.scrollTo({ y: idx * H_ITEM_H, animated: true });
   };
 
   const onMinuteScrollEnd = (e) => {
+    if (isScrollingProgrammatically.current) {
+      isScrollingProgrammatically.current = false;
+      return;
+    }
     const y = e.nativeEvent.contentOffset.y;
     let idx = snapToNearest(y, M_ITEM_H);
 
@@ -383,15 +375,41 @@ const NotificationsScreen = () => {
     setMinuteLoopIndex(nearEdge ? middleIdx : idx);
 
     if (nearEdge) {
-      requestAnimationFrame(() => {
+      isScrollingProgrammatically.current = true;
+      
         minuteRef.current?.scrollTo({ y: middleIdx * M_ITEM_H, animated: false });
-      });
+      
       return;
     }
     minuteRef.current?.scrollTo({ y: idx * M_ITEM_H, animated: true });
   };
 
   const toggleAmPm = (next) => setAmPm(next);
+
+  //알람 on/off 버튼
+  const toggleAlarm = async (id) => {
+  const updated = alarms.map(a =>
+    a.id === id ? { ...a, enabled: !a.enabled } : a
+  );
+
+  setAlarms(updated);
+  await saveAlarmsToStorage(updated);
+
+  // 🔥 If toggled ON → schedule it  
+  //    If toggled OFF → cancel & reschedule only enabled alarms
+  await Notifications.cancelAllScheduledNotificationsAsync();
+
+  for (const alarm of updated) {
+    if (alarm.enabled) {
+      if (alarm.repeatDaily) {
+        await scheduleDailyAlarm(alarm);
+      } else {
+        await scheduleOneTimeAlarm(alarm);
+      }
+    }
+  }
+};
+
 
   // 알림 저장
   const saveAlarm = async () => {
@@ -402,8 +420,10 @@ const NotificationsScreen = () => {
       minute: minute,    // 분 (0-59)
       ampm: ampm,        // AM/PM
       message: message || '작은 한 걸음, 지금 시작해요!',
-      repeatDaily: repeatDaily,
+      repeatDays: repeatDays || [],          // array of weekdays 0-6 (Sun-Sat)
+      repeatDaily: repeatDays?.length === 7, // true if all days
       selectedYMD: repeatDaily ? null : { ...selectedYMD },
+      enabled: editingId ? alarms.find(a => a.id === editingId)?.enabled : true,
     };
 
     // 저장할 시간 데이터 확인 로그
@@ -500,396 +520,626 @@ const NotificationsScreen = () => {
       console.warn('알림 해제 오류:', e);
     }
   };
+  
 
   // 알림이 없고 추가 모드도 아닐 때
   if (alarms.length === 0 && !isAdding) {
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.heroCard}>
-          <View>
-            <Text style={styles.heroTitle}>제로 웨이스트 루틴</Text>
-            <Text style={styles.heroSubtitle}>매일 작은 실천으로 지구를 지켜요</Text>
-          </View>
-          <TouchableOpacity style={styles.addButton} onPress={openNewForm}>
-            <Text style={styles.addButtonText}>+</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>나의 알림</Text>
-          <Text style={styles.sectionCount}>{alarms.length}개</Text>
-        </View>
-
-        {formattedAlarms.length === 0 ? (
-          <EmptyState />
-        ) : (
-          formattedAlarms.map((alarm) => (
-            <View key={alarm.id} style={styles.reminderCard}>
-              <TouchableOpacity
-                style={styles.emojiBubble}
-                onPress={() => {
-                  setEditingAlarm(alarm);
-                  setFormVisible(true);
-                }}
-              >
-                <Text style={styles.emojiText}>{alarm.emoji}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.reminderInfo}
-                onPress={() => {
-                  setEditingAlarm(alarm);
-                  setFormVisible(true);
-                }}
-              >
-                <Text style={styles.reminderTitle}>{alarm.title}</Text>
-                <Text style={styles.reminderMeta}>
-                  {alarm.time} · {formatDays(alarm.days)}
-                </Text>
-              </TouchableOpacity>
-
-              <Switch
-                value={alarm.enabled}
-                onValueChange={() => handleToggle(alarm)}
-                trackColor={{ false: '#cbd5f5', true: '#8bd672' }}
-                thumbColor="#fff"
-              />
-
-              <TouchableOpacity style={styles.deleteButton} onPress={() => confirmDelete(alarm)}>
-                <Text style={styles.deleteButtonText}>×</Text>
-              </TouchableOpacity>
-            </View>
-          ))
-        )}
-
-        <View style={styles.recommendCard}>
-          <View style={styles.recommendHeader}>
-            <Text style={styles.recommendTitle}>추천 알림</Text>
-            <TouchableOpacity onPress={() => setRecommendedVisible(true)}>
-              <Text style={styles.moreButton}>더 보기</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.recommendBody}>
-            <View style={styles.emojiBubbleSecondary}>
-              <Text style={styles.emojiText}>{featuredPreset.emoji}</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.recommendItemTitle}>{featuredPreset.title}</Text>
-              <Text style={styles.recommendItemMeta}>
-                {featuredPreset.time} · {formatDays(featuredPreset.days)}
-              </Text>
-              <Text style={styles.recommendDescription}>{featuredPreset.description}</Text>
-            </View>
-          </View>
-
+    <ScrollView contentContainerStyle={styles.screenContainer}>
+      <Text style={styles.title}>알림 시간 설정</Text>
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyText}>저장된 알림이 없습니다</Text>
           <TouchableOpacity
-            style={styles.recommendAddButton}
-            onPress={() => handleAddPreset(featuredPreset)}
+            style={[styles.btn, styles.btnPrimary]}
+            onPress={() => setIsAdding(true)}
           >
-            <Text style={styles.recommendAddText}>추가</Text>
+            <Text style={styles.btnPrimaryText}>알림 추가하기</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
+    );
+  }
 
-      <AlarmSetting
-        visible={formVisible}
-        initialValues={editingAlarm}
-        onCancel={() => {
-          setFormVisible(false);
-          setEditingAlarm(null);
-        }}
-        onSave={handleSaveReminder}
-      />
+  // 추가/수정 모드
+  if (isAdding || editingId !== null) {
+    return (
+      <ScrollView contentContainerStyle={styles.screenContainer}>
+        <Text style={styles.title}>
+          {editingId ? '알림 수정' : '알림 추가'}
+        </Text>
 
-      <Modal
-        visible={recommendedVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRecommendedVisible(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>추천 알림 목록</Text>
-              <TouchableOpacity onPress={() => setRecommendedVisible(false)}>
-                <Text style={styles.modalClose}>닫기</Text>
+      <View style={styles.card}>
+          <Text style={styles.cardHeader}>알림 설정</Text>
+
+        <TextInput
+          value={message}
+          onChangeText={setMessage}
+          placeholder="알림 내용 입력"
+          style={styles.input}
+          maxLength={80}
+        />
+        <View style={{ height: 8 }} />
+
+          {/* 반복 방식 토글 */}
+          <WeekDaySelect repeatDays={repeatDays} setRepeatDays={setRepeatDays} />
+          <View style={styles.rowBetween}>
+            <TouchableOpacity
+              onPress={() => setRepeatDaily(true)}
+              style={[styles.switchBtn, repeatDaily && styles.switchBtnActive]}
+            >
+              <Text style={[styles.switchText, repeatDaily && styles.switchTextActive]}>매일 반복</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setRepeatDaily(false)}
+              style={[styles.switchBtn, !repeatDaily && styles.switchBtnActive]}
+            >
+              <Text style={[styles.switchText, !repeatDaily && styles.switchTextActive]}>특정 날짜</Text>
+            </TouchableOpacity>
+          </View>
+          {!repeatDaily && (
+            <View style={{ marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnOutline]}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={styles.btnOutlineText}>
+                  {selectedYMD.year}-{pad2(selectedYMD.month + 1)}-{pad2(selectedYMD.day)} 날짜 선택
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={new Date(selectedYMD.year, selectedYMD.month, selectedYMD.day)}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+                  onChange={(event, date) => {
+                    if (Platform.OS !== 'ios') setShowDatePicker(false);
+                    if (date) {
+                      setSelectedYMD({
+                        year: date.getFullYear(),
+                        month: date.getMonth(),
+                        day: date.getDate(),
+                      });
+                    }
+                  }}
+                  style={{ alignSelf: 'stretch' }}
+                />
+              )}
+            </View>
+          )}
+
+          <View style={[styles.wheelContainer, { height: WHEEL_H }]}>
+            {/* AM/PM 토글 */}
+            <View style={styles.ampmCol}>
+              <TouchableOpacity
+                onPress={() => toggleAmPm('AM')}
+                style={[styles.ampmBtn, ampm === 'AM' && styles.ampmBtnActive]}
+              >
+                <Text style={[styles.ampmText, ampm === 'AM' && styles.ampmTextActive]}>AM</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => toggleAmPm('PM')}
+                style={[styles.ampmBtn, ampm === 'PM' && styles.ampmBtnActive]}
+              >
+                <Text style={[styles.ampmText, ampm === 'PM' && styles.ampmTextActive]}>PM</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {PRESET_REMINDERS.map((preset) => (
-                <View key={preset.id} style={styles.modalItem}>
-                  <View style={styles.modalItemEmoji}>
-                    <Text style={styles.emojiText}>{preset.emoji}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.modalItemTitle}>{preset.title}</Text>
-                    <Text style={styles.modalItemMeta}>
-                      {preset.time} · {formatDays(preset.days)}
+            {/* 시 */}
+          <View style={styles.wheel}>
+            <ScrollView
+              ref={hourRef}
+              showsVerticalScrollIndicator={false}
+              onMomentumScrollEnd={onHourScrollEnd}
+              snapToInterval={H_ITEM_H}
+              decelerationRate="fast"
+            >
+                <View style={{ height: 2 * H_ITEM_H }} />
+                {hoursLoop.map((h, i) => (
+                  <View key={`h-${i}`} style={[styles.wheelItem, { height: H_ITEM_H }]}>
+                    <Text style={i === hourLoopIndex ? styles.wheelTextActive : styles.wheelText}>
+                      {pad2(h)}
                     </Text>
-                    <Text style={styles.modalItemDesc}>{preset.description}</Text>
-                  </View>
-                  <TouchableOpacity
-                    style={styles.modalAddButton}
-                    onPress={() => handleAddPreset(preset)}
-                  >
-                    <Text style={styles.modalAddText}>추가</Text>
-                  </TouchableOpacity>
                 </View>
               ))}
+                <View style={{ height: 2 * H_ITEM_H }} />
             </ScrollView>
           </View>
+
+          <Text style={styles.wheelColon}>:</Text>
+
+            {/* 분 */}
+          <View style={styles.wheel}>
+            <ScrollView
+              ref={minuteRef}
+              showsVerticalScrollIndicator={false}
+              onMomentumScrollEnd={onMinuteScrollEnd}
+              snapToInterval={M_ITEM_H}
+              decelerationRate="fast"
+            >
+                <View style={{ height: 2 * M_ITEM_H }} />
+                {minutesLoop.map((m, i) => (
+                  <View key={`m-${i}`} style={[styles.wheelItem, { height: M_ITEM_H }]}>
+                    <Text style={i === minuteLoopIndex ? styles.wheelTextActive : styles.wheelText}>
+                      {pad2(m)}
+                    </Text>
+                </View>
+              ))}
+                <View style={{ height: 2 * M_ITEM_H }} />
+            </ScrollView>
+            </View>
+
+            <View pointerEvents="none" style={styles.selectorBar} />
+          </View>
+        <View style={styles.iosPreviewContainer}>
+          <Text style={styles.previewSectionLabel}>🔔 미리보기</Text>
+            <View style={styles.iosNotificationCard}>
+              <View style={styles.iosRow}>
+                <Text style={styles.iosAppName}>보들보틀</Text>
+                <Text style={styles.iosAppName}>🌱</Text>
+                <Text style={styles.iosTimestamp}>지금</Text>
+              </View>
+              <Text style={styles.iosMessage} numberOfLines={2}>
+                {message || '알림 내용이 여기에 표시됩니다.'}
+              </Text>
+            </View>
         </View>
-      </Modal>
+        <View style={{ height: 12 }} />
+        <View style={{ flexDirection: 'row' }}>
+          <TouchableOpacity
+              style={[styles.btn, styles.btnOutline, { flex: 1 }]}
+              onPress={cancelEdit}
+          >
+              <Text style={styles.btnOutlineText}>취소</Text>
+          </TouchableOpacity>
+          <View style={{ width: 8 }} />
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
+              onPress={saveAlarm}
+            >
+              <Text style={styles.btnPrimaryText}>저장</Text>
+          </TouchableOpacity>
+          </View>
+          <View style={{ height: 8 }} />
+          <Text style={styles.notifyHint}>
+            {repeatDaily
+              ? `매일 ${ampm} ${pad2(hour)}:${pad2(minute)}에 알림이 전송됩니다.`
+              : selectedYMD
+               ? `${selectedYMD.year}-${pad2(selectedYMD.month + 1)}-${pad2(selectedYMD.day)} ${ampm} ${pad2(hour)}:${pad2(minute)}에 한 번 전송됩니다.`
+                : repeatDays?.length
+                 ? `매주 ${repeatDays.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')} 반복`
+                  : '한 번 반복'
+              }
+          </Text>
+        </View>
+      </ScrollView>
+    );
+  }
+
+  // 저장된 알림 목록 표시
+  return (
+    <ScrollView contentContainerStyle={styles.screenContainer}>
+    <View style={styles.card}>
+      <Text style={styles.cardHeader}>🔔 알림 시간 설정</Text>
+      <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary]}
+            onPress={() => setIsAdding(true)}
+          >
+            <Text style={styles.btnPrimaryText}>+ 추가</Text>
+          </TouchableOpacity>
     </View>
+
+      <View style={styles.card}>
+        <View style={styles.listHeader}>
+          <Text style={styles.cardHeader}>저장된 알림 ({alarms.length}개)</Text>
+        </View>
+
+        {alarms.map((alarm) => (
+          <View key={alarm.id} style={styles.alarmItem}>
+            <View style={styles.alarmInfo}>
+              {alarm.message && (
+                <Text style={styles.alarmMessage}>{alarm.message}</Text>
+              )}
+              
+              <Text style={styles.alarmDesc}>
+                {alarm.repeatDaily
+                  ? '매일 반복'
+                  : alarm.selectedYMD
+                    ? `${alarm.selectedYMD.year}-${pad2(alarm.selectedYMD.month + 1)}-${pad2(alarm.selectedYMD.day)} 한 번`
+                    : alarm.repeatDays?.length
+                      ? `매주 ${alarm.repeatDays.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')} 반복`
+                      : '한 번 반복'}
+              </Text>
+
+              <Text style={styles.alarmTime}>
+                {alarm.ampm} {pad2(alarm.hour)}:{pad2(alarm.minute)}
+              </Text>
+            </View>
+            <View style={styles.alarmActions}>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnGhost]}
+                onPress={() => setEditingId(alarm.id)}
+              >
+                <Text style={styles.btnGhostText}>수정</Text>
+              </TouchableOpacity>
+              {/* 🔥 NEW: Toggle switch */}
+              <TouchableOpacity
+                onPress={() => toggleAlarm(alarm.id)}
+                style={[
+                  styles.toggle,
+                  alarm.enabled ? styles.toggleOn : styles.toggleOff
+                ]}
+              >
+                <View
+                  style={[
+                    styles.toggleCircle,
+                    alarm.enabled ? styles.toggleCircleOn : styles.toggleCircleOff
+                  ]}
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.btnDelete}
+                onPress={() => deleteAlarm(alarm.id)}
+              >
+                <Text style={styles.btnDeleteText}>❌</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+
+        <View style={{ height: 12 }} />
+        <View style={{ height: 8 }} />
+        <TouchableOpacity
+          style={[styles.btn, styles.btnOutline]}
+          onPress={clearAllSchedules}
+        >
+          <Text style={styles.btnOutlineText}>모두 해제</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f4f7f1',
-  },
-  scrollContent: {
+  screenContainer: {
     padding: 20,
     paddingBottom: 40,
-    gap: 18,
+    backgroundColor: '#f7faf3',
+    minHeight: '100%',
   },
-  heroCard: {
-    backgroundColor: '#313c2f',
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: 'row',
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 16,
+  },
+  emptyCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 32,
+    marginBottom: 16,
+    borderColor: '#e5e7eb',
+    borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#6b7280',
+    marginBottom: 20,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderColor: '#e5e7eb',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  cardHeader: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  listHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  alarmItem: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
   },
-  heroTitle: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '700',
+  alarmInfo: {
+    flex: 1,
   },
-  heroSubtitle: {
-    color: '#c0d2bf',
+  alarmTime: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginBottom: 4,
+  },
+  alarmDesc: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  alarmMessage: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
     marginTop: 4,
   },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#9ed26b',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addButtonText: {
-    color: '#1e2a1c',
-    fontSize: 32,
-    fontWeight: '700',
-    marginTop: -4,
-  },
-  sectionHeader: {
+  alarmActions: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
     gap: 8,
   },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1f2a1d',
-  },
-  sectionCount: {
-    color: '#7c8b7a',
-    fontWeight: '600',
-  },
-  reminderCard: {
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    marginBottom: 12,
-  },
-  emojiBubble: {
-    width: 48,
-    height: 48,
-    borderRadius: 16,
-    backgroundColor: '#f2f6ec',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  emojiBubbleSecondary: {
-    width: 56,
-    height: 56,
-    borderRadius: 18,
-    backgroundColor: '#f0f4e4',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  emojiText: {
-    fontSize: 24,
-  },
-  reminderInfo: {
-    flex: 1,
-  },
-  reminderTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f2a1d',
-  },
-  reminderMeta: {
-    marginTop: 4,
-    color: '#6f7e6b',
-  },
-  deleteButton: {
-    marginLeft: 8,
-    padding: 8,
-  },
-  deleteButtonText: {
-    fontSize: 24,
-    color: '#d36a6a',
-    fontWeight: '700',
-  },
-  emptyState: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1f2a1d',
-  },
-  emptySub: {
-    color: '#7c8b7a',
-    marginTop: 6,
-  },
-  recommendCard: {
-    backgroundColor: '#fff7e8',
-    borderRadius: 20,
-    padding: 18,
-    gap: 12,
-  },
-  recommendHeader: {
+  rowBetween: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    gap: 8,
   },
-  recommendTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#5e421c',
-  },
-  moreButton: {
-    color: '#d28d3c',
-    fontWeight: '700',
-  },
-  recommendBody: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  recommendItemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#3f2c0b',
-  },
-  recommendItemMeta: {
-    color: '#8f6a33',
-    marginVertical: 4,
-  },
-  recommendDescription: {
-    color: '#5e421c',
-  },
-  recommendAddButton: {
-    backgroundColor: '#f3a952',
-    borderRadius: 16,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  recommendAddText: {
-    color: '#3f2c0b',
-    fontWeight: '700',
-  },
-  modalBackdrop: {
+  switchBtn: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalCard: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    paddingVertical: 10,
+    borderRadius: 10,
     alignItems: 'center',
-    marginBottom: 12,
+    backgroundColor: 'transparent',
   },
-  modalTitle: {
-    fontSize: 18,
+  switchBtnActive: {
+    backgroundColor: '#3c8c4c',
+    borderColor: '#3c8c4c',
+  },
+  switchText: {
+    color: '#111827',
     fontWeight: '700',
-    color: '#1f2a1d',
   },
-  modalClose: {
-    color: '#6f7e6b',
-    fontWeight: '600',
+  switchTextActive: {
+    color: '#fff',
   },
-  modalItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#edf0ea',
-  },
-  modalItemEmoji: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor: '#f2f6ec',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalItemTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1f2a1d',
-  },
-  modalItemMeta: {
-    color: '#6f7e6b',
-    marginVertical: 4,
-  },
-  modalItemDesc: {
-    color: '#7c8b7a',
-  },
-  modalAddButton: {
-    backgroundColor: '#f0f4e4',
+  btn: {
     borderRadius: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  modalAddText: {
-    color: '#4b5b49',
+  btnPrimary: {
+    backgroundColor: '#3c8c4c',
+  },
+  btnPrimaryText: {
+    color: '#fff',
     fontWeight: '700',
   },
+  btnSecondary: {
+    backgroundColor: '#2563eb22',
+    borderWidth: 1,
+    borderColor: '#2563eb66',
+  },
+  btnSecondaryText: {
+    color: '#1f2937',
+    fontWeight: '700',
+  },
+  btnGhost: {
+    backgroundColor: 'transparent',
+  },
+  btnGhostText: {
+    color: '#4b5563',
+    fontWeight: '600',
+  },
+  btnOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+  },
+  btnOutlineText: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  btnDelete: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffe1e7ff',
+    borderWidth: 1,
+    borderColor: '#f78497ff',
+  },
+  btnDeleteText: {
+    color: '#e9576fff',
+    fontWeight: '700',
+    fontSize: 10,
+    lineHeight: 16,
+  },
+  notifyHint: {
+    color: '#6b7280',
+    marginTop: 4,
+    fontSize: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    color: '#111827',
+  },
+  wheelContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 6,
+    position: 'relative',
+  },
+  wheel: {
+    width: 100,
+    height: 5 * 40,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  wheelItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wheelText: {
+    fontSize: 18,
+    color: '#6b7280',
+  },
+  wheelTextActive: {
+    fontSize: 20,
+    color: '#111827',
+    fontWeight: '700',
+  },
+  wheelColon: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#111827',
+    marginHorizontal: 8,
+  },
+  selectorBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 40 * 2,
+    height: 40,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e5e7eb',
+    opacity: 0.6,
+  },
+  ampmCol: {
+    marginLeft: 8,
+    height: 5 * 40,
+    justifyContent: 'center',
+  },
+  ampmBtn: {
+    width: 70,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginVertical: 4,
+    alignItems: 'center',
+  },
+  ampmBtnActive: {
+    backgroundColor: '#3c8c4c',
+    borderColor: '#3c8c4c',
+  },
+  ampmText: {
+    fontSize: 16,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  ampmTextActive: {
+    color: '#fff',
+  },
+  toggle: {
+  width: 50,
+  height: 28,
+  borderRadius: 20,
+  padding: 3,
+  justifyContent: 'center',
+},
+
+toggleOn: {
+  backgroundColor: '#3c8c4c',
+  alignItems: 'flex-end',
+},
+
+toggleOff: {
+  backgroundColor: '#d1d5db',
+  alignItems: 'flex-start',
+},
+
+toggleCircle: {
+  width: 22,
+  height: 22,
+  borderRadius: 11,
+},
+
+toggleCircleOn: {
+  backgroundColor: '#fff',
+},
+
+toggleCircleOff: {
+  backgroundColor: '#fff',
+},
+iosPreviewContainer: {
+  marginTop: 40,
+  marginBottom: 20,
+},
+
+previewSectionLabel: {
+  fontSize: 16,
+  fontWeight: '700',
+  color: '#333',
+  marginBottom: 10,
+},
+
+iosNotificationCard: {
+  backgroundColor: '#fff',
+  padding: 14,
+  borderRadius: 16,
+  width: '100%',
+  borderWidth: 1,
+  borderColor: '#e6e6e6',
+
+  // iOS shadow
+  shadowColor: '#000',
+  shadowOpacity: 0.08,
+  shadowRadius: 10,
+  shadowOffset: { width: 0, height: 4 },
+
+  elevation: 3,
+},
+
+iosRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  marginBottom: 6,
+},
+
+iosAppIcon: {
+  width: 20,
+  height: 20,
+  borderRadius: 4,
+  backgroundColor: '#6EC41E', // green icon placeholder (can replace)
+  marginRight: 8,
+},
+
+iosAppName: {
+  fontSize: 14,
+  fontWeight: '600',
+  color: '#000',
+  marginRight: 6,
+},
+
+iosTimestamp: {
+  fontSize: 13,
+  color: '#8e8e93',
+  marginLeft: 'auto',
+},
+
+iosMessage: {
+  fontSize: 15,
+  color: '#000',
+  lineHeight: 20,
+},
+
 });
 
 export default NotificationsScreen;

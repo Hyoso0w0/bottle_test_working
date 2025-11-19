@@ -3,7 +3,32 @@ import React, { useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
-import { ensureLocalNotificationsReady } from './localNotifications';
+import { Platform } from 'react-native';
+
+// AsyncStorage 안전하게 import
+let AsyncStorage;
+try {
+  const AsyncStorageModule = require('@react-native-async-storage/async-storage');
+  AsyncStorage = AsyncStorageModule.default || AsyncStorageModule;
+  if (!AsyncStorage || AsyncStorage === null) {
+    throw new Error('AsyncStorage is null');
+  }
+} catch (e) {
+  console.warn('AsyncStorage를 로드할 수 없습니다:', e);
+  const memoryStorage = {};
+  AsyncStorage = {
+    _storage: memoryStorage,
+    async getItem(key) {
+      return this._storage[key] || null;
+    },
+    async setItem(key, value) {
+      this._storage[key] = value;
+    },
+    async removeItem(key) {
+      delete this._storage[key];
+    },
+  };
+}
 
 import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
@@ -121,7 +146,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    // 1) 로컬 알림 채널 & 권한 준비
+    // 1) 권한 요청 및 안드로이드 채널 설정
     (async () => {
       const { status } = await Notifications.getPermissionsAsync();
       if (status !== 'granted') {

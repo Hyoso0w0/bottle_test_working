@@ -116,6 +116,50 @@ const NotificationsScreen = () => {
     })();
   }, []);
   // 🔥🔥🔥 여기까지
+
+    useEffect(() => {
+    const logAllScheduled = async () => {
+      try {
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+
+        console.log("========================================");
+        console.log("📢 [현재 등록된 알림 목록]");
+
+        if (!scheduled || scheduled.length === 0) {
+          console.log(" - 등록된 알림이 없습니다.");
+        } else {
+          scheduled.forEach((n, index) => {
+            // date / timestamp 둘 다 대비
+            let when = null;
+            if (n.trigger?.date) {
+              when = new Date(n.trigger.date);
+            } else if (n.trigger?.timestamp) {
+              when = new Date(n.trigger.timestamp);
+            }
+
+            console.log(`\n🔔 알림 #${index + 1}`);
+            console.log(` - ID (identifier): ${n.identifier}`);
+            console.log(` - 트리거 타입: ${n.trigger?.type}`);
+            console.log(
+              ` - 예정 시각: ${
+                when ? when.toString() : "알 수 없음 (trigger.date / timestamp 없음)"
+              }`
+            );
+            console.log(` - 제목: ${n.content?.title}`);
+            console.log(` - 내용: ${n.content?.body}`);
+            console.log(` - data:`, n.content?.data);
+          });
+        }
+
+        console.log("========================================");
+      } catch (e) {
+        console.warn("알림 조회 오류:", e);
+      }
+    };
+
+    logAllScheduled();
+  }, []);
+  
   
   // 초기 AM/PM 기준 시간 설정
   const now = new Date();

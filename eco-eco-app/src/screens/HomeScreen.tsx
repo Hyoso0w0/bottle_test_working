@@ -356,6 +356,41 @@ export default function HomeScreen({
           </View>
         </ScrollView>
       </Animated.View>
+        {/* Bottom Navigation */}
+  <View style={styles.bottomNav}>
+    {/* 알림 버튼 */}
+    <TouchableOpacity
+      style={styles.navButton}
+      onPress={() => onNavigate('notifications')}
+    >
+      <View style={styles.navIconWrapper}>
+        <Ionicons name="notifications-outline" size={20} color="#4b5563" />
+      </View>
+      <Text style={styles.navLabel}>알림</Text>
+    </TouchableOpacity>
+
+    {/* 홈 버튼 (가운데, 크게) */}
+    <TouchableOpacity
+      style={styles.navButtonCenter}
+      onPress={() => onNavigate('home')}
+    >
+      <View style={styles.navIconWrapperCenter}>
+        <Ionicons name="home" size={24} color="#ffffff" />
+      </View>
+      <Text style={styles.navLabelActive}>홈</Text>
+    </TouchableOpacity>
+
+    {/* 마이 페이지 버튼 */}
+    <TouchableOpacity
+      style={styles.navButton}
+      onPress={() => onNavigate('mypage')}
+    >
+      <View style={styles.navIconWrapper}>
+        <Ionicons name="person-outline" size={20} color="#4b5563" />
+      </View>
+      <Text style={styles.navLabel}>마이</Text>
+    </TouchableOpacity>
+  </View>
     </View>
   );
 }
@@ -468,7 +503,7 @@ const styles = StyleSheet.create({
   },
   bottomSheet: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 80,
     left: 0,
     right: 0,
     backgroundColor: '#ffffff',
@@ -647,5 +682,62 @@ const styles = StyleSheet.create({
   cookieBadge: {
     fontSize: 10,
     color: '#84cc16',
+  },
+  bottomNav: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    backgroundColor: '#ffffff',
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+    zIndex: 20,
+  },
+  navButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navButtonCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -16, // 가운데 버튼만 살짝 위로 띄우기
+  },
+  navIconWrapper: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+  },
+  navIconWrapperCenter: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#22c55e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  navLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+  },
+  navLabelActive: {
+    fontSize: 11,
+    color: '#16a34a',
+    fontWeight: '600',
   },
 });

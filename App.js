@@ -1,9 +1,13 @@
 // App.js
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebase";          // ✅ 추가
+import LoginScreen from "./LoginScreen";   // ✅ 추가
+import { signOut } from "firebase/auth";
 
 // AsyncStorage 안전하게 import
 let AsyncStorage;
@@ -57,6 +61,21 @@ if (typeof global !== 'undefined') {
 export default function App() {
   const notificationListener = useRef();
   const responseListener = useRef();
+
+// ✅ 로그인 상태
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // ✅ Firebase auth 구독
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+  
+  const onLogout = () => signOut(auth);
 
   // 알림 스케줄링 헬퍼 함수
   const scheduleAlarms = async (alarmsList) => {
@@ -223,22 +242,25 @@ export default function App() {
     };
   }, []);
 
+  // ⭐️ 여기에 넣음!!
+  if (authLoading) return null;
+
   return (
     <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerTitleAlign: 'center',
-        }}
-      >
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: '첫 화면' }} />
-        <Stack.Screen name="Records" component={RecordsScreen} options={{ title: '내 기록' }} />
-        <Stack.Screen
-          name="Notifications"
-          component={NotificationsScreen}
-          options={{ title: '알림 설정' }}
-        />
-        <Stack.Screen name="Calendar" component={CalendarScreen} options={{ title: '캘린더' }} />
-      </Stack.Navigator>
+      {user ? (
+        // 로그인 O → 기존 네비게이션 스택
+        <Stack.Navigator screenOptions={{ headerTitleAlign: 'center' }}>
+          <Stack.Screen name="Home" component={HomeScreen} options={{ title: '첫 화면' }} />
+          <Stack.Screen name="Records" component={RecordsScreen} options={{ title: '내 기록' }} />
+          <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ title: '알림 설정' }} />
+          <Stack.Screen name="Calendar" component={CalendarScreen} options={{ title: '캘린더' }} />
+        </Stack.Navigator>
+      ) : (
+        // 로그인 X → 로그인 스크린
+         <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Screen name="Login" component={LoginScreen} />
+  </Stack.Navigator>
+      )}
     </NavigationContainer>
   );
 }

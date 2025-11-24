@@ -44,6 +44,7 @@ const scheduleDailyAlarm = async (alarm) => {
   return notificationId;
 };
 const scheduleOneTimeAlarm = async (alarm) => {
+  if (!alarm.selectedYMD) return null;
   const { year, month, day } = alarm.selectedYMD;
   const h24 = alarm.ampm === "PM" ? (alarm.hour % 12) + 12 : alarm.hour % 12;
 
@@ -141,6 +142,8 @@ const NotificationsScreen = () => {
   const [alarms, setAlarms] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);
+
 
    // 🔥🔥🔥 여기 아래 넣으면 정확하게 맞음
   useEffect(() => {
@@ -310,6 +313,7 @@ const NotificationsScreen = () => {
  // Track whether initial scroll has been applied
 const hasScrolledToInitial = useRef(false);
 
+
 useEffect(() => {
   if ((isAdding || editingId !== null) && !hasScrolledToInitial.current) {
     setTimeout(() => {
@@ -400,31 +404,45 @@ useEffect(() => {
   await Notifications.cancelAllScheduledNotificationsAsync();
 
   for (const alarm of updated) {
-    if (alarm.enabled) {
-      if (alarm.repeatDaily) {
-        await scheduleDailyAlarm(alarm);
-      } else {
-        await scheduleOneTimeAlarm(alarm);
-      }
-    }
+  if (!alarm.enabled) continue;
+
+  if (alarm.repeatDaily) {
+    await scheduleDailyAlarm(alarm);
+  } else if (alarm.repeatDays?.length) {
+    await scheduleWeeklyAlarm(alarm);
+  } else {
+    await scheduleOneTimeAlarm(alarm);
   }
+}
 };
 
 
   // 알림 저장
   const saveAlarm = async () => {
     // 시간 데이터 명시적으로 저장 (hour, minute, ampm)
-    const newAlarm = {
-      id: editingId || Date.now().toString(),
-      hour: hour,        // 시 (1-12)
-      minute: minute,    // 분 (0-59)
-      ampm: ampm,        // AM/PM
-      message: message || '작은 한 걸음, 지금 시작해요!',
-      repeatDays: repeatDays || [],          // array of weekdays 0-6 (Sun-Sat)
-      repeatDaily: repeatDays?.length === 7, // true if all days
-      selectedYMD: repeatDaily ? null : { ...selectedYMD },
-      enabled: editingId ? alarms.find(a => a.id === editingId)?.enabled : true,
-    };
+    // ✅ 반복 종류를 "UI 토글 기준"으로 정확히 결정
+  const newId = editingId || Date.now().toString();
+
+  const isDaily = repeatDaily; // UI 토글 기준
+  const isWeekly = !repeatDaily && repeatDays.length > 0;
+  const isOneTime = !isDaily && !isWeekly;
+
+  const newAlarm = {
+    id: newId,
+    hour,
+    minute,
+    ampm,
+    message: message || '작은 한 걸음, 지금 시작해요!',
+
+    repeatDaily: isDaily,
+    repeatDays: isWeekly ? repeatDays : [],
+    selectedYMD: isOneTime ? { ...selectedYMD } : null,
+
+    enabled: editingId
+      ? alarms.find(a => a.id === editingId)?.enabled
+      : true,
+  };
+
 
     // 저장할 시간 데이터 확인 로그
     console.log('========================================');
@@ -469,6 +487,7 @@ useEffect(() => {
     console.log('저장된 알림 스케줄링 시작...');
     await applyAllSchedulesSafely(updatedAlarms);
     console.log('저장된 알림 스케줄링 완료');
+    
   };
 
   // 취소
@@ -491,6 +510,7 @@ useEffect(() => {
     } catch (e) {
       console.warn('알림 삭제 오류:', e);
     }
+    
   };
 
   const sendTestNow = async () => {
@@ -542,8 +562,15 @@ useEffect(() => {
 
   // 추가/수정 모드
   if (isAdding || editingId !== null) {
-    return (
-      <ScrollView contentContainerStyle={styles.screenContainer}>
+  return (
+    <ScrollView
+      contentContainerStyle={styles.screenContainer}
+      nestedScrollEnabled
+      keyboardShouldPersistTaps="always"
+      scrollEnabled={outerScrollEnabled}
+      keyboardDismissMode="on-drag"
+    >
+
         <Text style={styles.title}>
           {editingId ? '알림 수정' : '알림 추가'}
         </Text>
@@ -607,7 +634,9 @@ useEffect(() => {
             </View>
           )}
 
-          <View style={[styles.wheelContainer, { height: WHEEL_H }]}>
+          <View
+            style={[styles.wheelContainer, { height: WHEEL_H }]}
+          >
             {/* AM/PM 토글 */}
             <View style={styles.ampmCol}>
               <TouchableOpacity
@@ -628,10 +657,16 @@ useEffect(() => {
           <View style={styles.wheel}>
             <ScrollView
               ref={hourRef}
+              nestedScrollEnabled
               showsVerticalScrollIndicator={false}
-              onMomentumScrollEnd={onHourScrollEnd}
+              onScrollBeginDrag={() => setOuterScrollEnabled(false)}
+              onScrollEndDrag={() => setOuterScrollEnabled(true)}
+              onMomentumScrollEnd={(e) => { 
+              setOuterScrollEnabled(true);
+              onHourScrollEnd(e);}}
               snapToInterval={H_ITEM_H}
               decelerationRate="fast"
+              scrollEventThrottle={16}
             >
                 <View style={{ height: 2 * H_ITEM_H }} />
                 {hoursLoop.map((h, i) => (
@@ -649,13 +684,20 @@ useEffect(() => {
 
             {/* 분 */}
           <View style={styles.wheel}>
-            <ScrollView
-              ref={minuteRef}
-              showsVerticalScrollIndicator={false}
-              onMomentumScrollEnd={onMinuteScrollEnd}
-              snapToInterval={M_ITEM_H}
-              decelerationRate="fast"
-            >
+           <ScrollView
+            ref={minuteRef}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            onScrollBeginDrag={() => setOuterScrollEnabled(false)}
+            onScrollEndDrag={() => setOuterScrollEnabled(true)}
+            onMomentumScrollEnd={(e) => {
+              setOuterScrollEnabled(true);
+              onMinuteScrollEnd(e);
+            }}
+            snapToInterval={M_ITEM_H}
+            decelerationRate="fast"
+            scrollEventThrottle={16}
+          >
                 <View style={{ height: 2 * M_ITEM_H }} />
                 {minutesLoop.map((m, i) => (
                   <View key={`m-${i}`} style={[styles.wheelItem, { height: M_ITEM_H }]}>
@@ -684,7 +726,7 @@ useEffect(() => {
             </View>
         </View>
         <View style={{ height: 12 }} />
-        <View style={{ flexDirection: 'row' }}>
+        <View style={{ flexDirection: 'row', zIndex: 10, elevation: 10 }}>
           <TouchableOpacity
               style={[styles.btn, styles.btnOutline, { flex: 1 }]}
               onPress={cancelEdit}

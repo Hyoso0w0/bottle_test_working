@@ -8,6 +8,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";          // ✅ 추가
 import LoginScreen from "./LoginScreen";   // ✅ 추가
 import { signOut } from "firebase/auth";
+import StartScreen from "./StartScreen";
 
 // AsyncStorage 안전하게 import
 let AsyncStorage;
@@ -257,9 +258,10 @@ export default function App() {
         </Stack.Navigator>
       ) : (
         // 로그인 X → 로그인 스크린
-         <Stack.Navigator screenOptions={{ headerShown: false }}>
-    <Stack.Screen name="Login" component={LoginScreen} />
-  </Stack.Navigator>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="Start" component={StartScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} />
+        </Stack.Navigator>
       )}
     </NavigationContainer>
   );

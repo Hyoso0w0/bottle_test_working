@@ -1,11 +1,13 @@
 // HomeScreen.js
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import TreeForest from './TreeForest';
 import GiftRecommend from './GiftRecommend';
 import * as Notifications from 'expo-notifications';
 import { LOCAL_NOTIFICATION_CHANNEL_ID } from './localNotifications';
+import { auth, db } from './firebase';
+import { doc, setDoc, increment, getDoc } from 'firebase/firestore';
 
 const getTimeSlot = () => {
   const h = new Date().getHours();
@@ -48,7 +50,44 @@ const HomeScreen = ({ navigation }) => {
   const [forestTrees, setForestTrees] = useState([]);
   // 📝 완료 미션 기록
   const [missionHistory, setMissionHistory] = useState([]);
+ // 🔥 앱 들어올 때 Firestore에서 나무·미션 수 불러오기
+  useEffect(() => {
+    const fetchUserForest = async () => {
+      const user = auth.currentUser;
+      if (!user) return;
 
+      try {
+        const ref = doc(db, 'users', user.uid);
+        const snap = await getDoc(ref);
+
+        if (!snap.exists()) return;
+
+        const data = snap.data();
+
+        // Firestore에 저장된 총 미션 수 / 나무 수
+        const totalMissions = data.totalMissionsCompleted || 0;
+        const totalTrees = data.totalTrees || 0;
+
+        // 화면 상단 숫자
+        setCompleted(totalMissions);
+
+        // 나무 배열 만들어서 TreeForest에 전달
+        const maxTrees = 30;
+        const count = Math.min(totalTrees, maxTrees);
+        const initialTrees = Array.from({ length: count }).map((_, idx) => ({
+          id: `initial-${idx}`,
+          emoji: '🌳',
+        }));
+
+        setForestTrees(initialTrees);
+      } catch (e) {
+        console.warn('초기 나무 정보를 가져오는 데 실패했어요:', e);
+      }
+    };
+
+    fetchUserForest();
+  }, []);
+  
   const timeSlot = getTimeSlot();
   const [recommendVisible, setRecommendVisible] = useState(false);
   const recommendedMission = useMemo(
@@ -97,13 +136,14 @@ const HomeScreen = ({ navigation }) => {
   };
 
   // ✅ 미션 완료 시: 기록 + 나무 추가
-  const completeMission = () => {
-    setCompleted((c) => c + 1);
+  const completeMission = async () => {
+  setCompleted((c) => c + 1);
 
-    const config = missionConfigs[selectedMission] || {
-      trees: 1,
-      emoji: '🌳',
-    };
+  const config = missionConfigs[selectedMission] || {
+    trees: 1,
+    emoji: '🌳',
+  };
+
 
     // 나무 추가
     setForestTrees((prev) => {
@@ -143,6 +183,46 @@ const HomeScreen = ({ navigation }) => {
       },
       ...prev,
     ]);
+    // 🎁 여기서부터 → Firestore 에도 저장
+  const user = auth.currentUser;
+  if (!user) {
+    console.warn('로그인된 유저가 없어서 Firestore에 저장하지 못했어요.');
+    setRecommendVisible(true);
+    return;
+  }
+
+  try {
+    const uid = user.uid;
+
+    const dateKey = `${localTime.year}-${String(localTime.month + 1).padStart(
+      2,
+      '0'
+    )}-${String(localTime.date).padStart(2, '0')}`;
+
+    // users/{uid} 문서에 총 미션 + 날짜별 미션 카운트만 저장
+    await setDoc(
+      doc(db, 'users', uid),
+      {
+        totalMissionsCompleted: increment(1),
+        totalTrees: increment(1),
+        [`dailyMissions.${dateKey}`]: increment(1),
+      },
+      { merge: true }
+    );
+    // 3) (선택) 개별 미션 히스토리까지 저장하고 싶다면:
+    //    missions 컬렉션에 한 건씩 push
+    /*
+    await addDoc(collection(db, 'missions'), {
+      uid,
+      mission: selectedMission,
+      timeSlot,
+      emoji: config.emoji || '🌳',
+      completedAt: serverTimestamp(), // Firebase Timestamp
+    });
+    */
+     } catch (e) {
+    console.warn('Firestore에 미션 정보를 저장하는 데 실패했어요:', e);
+    }
 
     setRecommendVisible(true);
   };

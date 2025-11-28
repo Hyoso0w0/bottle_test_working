@@ -30,6 +30,14 @@ const isToday = (date) => {
   return isSameDay(date, new Date());
 };
 
+// ✅ RecordsScreen 의 formatDate 와 맞는 YYYY-MM-DD 문자열로 변환하는 유틸
+const toDateKey = (date) => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate()
+  ).padStart(2, '0')}`;
+};
+
+
 const CalendarScreen = ({ navigation, route }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -109,6 +117,15 @@ const CalendarScreen = ({ navigation, route }) => {
   const handleDateSelect = (day) => {
     const newDate = new Date(year, month, day);
     setSelectedDate(newDate);
+
+    const dateKey = toDateKey(newDate); // "YYYY-MM-DD"
+
+    // ⚠️ 여기의 'RecordsScreen' 이름은
+    // Stack.Navigator 에서 사용한 name 과 똑같이 맞춰야 함!
+    navigation.navigate('Records', {
+      history: missionHistory,  // RecordsScreen 에서 route.params.history 로 받음
+      selectedDate: dateKey,    // RecordsScreen 에서 route.params.selectedDate 로 받음
+    });
   };
 
   // 캘린더 그리드 생성

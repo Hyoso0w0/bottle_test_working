@@ -19,7 +19,9 @@ const formatDate = (completedAt) => {
 const formatTime = (completedAt) => {
   // 로컬 시간 객체인 경우
   if (completedAt && typeof completedAt === 'object' && completedAt.hours !== undefined) {
-    return `${String(completedAt.hours).padStart(2, '0')}:${String(completedAt.minutes).padStart(2, '0')}`;
+    return `${String(completedAt.hours).padStart(2, '0')}:${String(
+      completedAt.minutes
+    ).padStart(2, '0')}`;
   }
   // ISO 문자열인 경우 (하위 호환성)
   const date = new Date(completedAt);
@@ -35,6 +37,7 @@ const timeSlotLabel = (slot) => {
 
 const RecordsScreen = ({ route }) => {
   const history = route.params?.history ?? [];
+  const selectedDateParam = route.params?.selectedDate ?? null; // ← 달력에서 넘어온 날짜(YYYY-MM-DD)
   const [selectedMission, setSelectedMission] = useState(null); // 상세 팝업용
 
   // ✅ 날짜별로 묶기
@@ -45,18 +48,25 @@ const RecordsScreen = ({ route }) => {
     return acc;
   }, {});
 
-  const dates = Object.keys(groupedByDate).sort((a, b) => (a < b ? 1 : -1));
+  const allDates = Object.keys(groupedByDate).sort((a, b) => (a < b ? 1 : -1));
+
+  // ✅ 선택된 날짜가 있으면 그 날짜만, 없으면 전체 날짜 렌더
+  const datesToRender = selectedDateParam
+    ? allDates.filter((d) => d === selectedDateParam)
+    : allDates;
 
   return (
     <ScrollView contentContainerStyle={styles.screenContainer}>
-      <Text style={styles.title}>내 기록</Text>
+      <Text style={styles.title}>
+        {selectedDateParam ? `${selectedDateParam} 내 기록` : '내 기록'}
+      </Text>
 
-      {history.length === 0 ? (
+      {history.length === 0 || datesToRender.length === 0 ? (
         <View style={styles.card}>
           <Text style={styles.emptyText}>아직 완료된 미션이 없어요.</Text>
         </View>
       ) : (
-        dates.map((date) => (
+        datesToRender.map((date) => (
           <View key={date} style={styles.card}>
             <Text style={styles.dateHeader}>{date}</Text>
             {groupedByDate[date].map((r) => (
@@ -90,11 +100,10 @@ const RecordsScreen = ({ route }) => {
                   완료 날짜: {formatDate(selectedMission.completedAt)}
                 </Text>
                 <Text style={styles.modalText}>
-                  완료 시간: {formatTime(selectedMission.completedAt)} ({timeSlotLabel(selectedMission.timeSlot)})
+                  완료 시간: {formatTime(selectedMission.completedAt)} (
+                  {timeSlotLabel(selectedMission.timeSlot)})
                 </Text>
-                <Text style={styles.modalText}>
-                  나무 종류: {selectedMission.emoji}
-                </Text>
+                <Text style={styles.modalText}>나무 종류: {selectedMission.emoji}</Text>
                 <TouchableOpacity
                   style={[styles.btn, styles.btnClose]}
                   onPress={() => setSelectedMission(null)}

@@ -1,11 +1,17 @@
 // HomeScreen.js
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useContext, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import TreeForest from './TreeForest';
-import GiftRecommend from './GiftRecommend';
 import * as Notifications from 'expo-notifications';
 import { LOCAL_NOTIFICATION_CHANNEL_ID } from './localNotifications';
+import { AppContext } from "./AppContext";
+import { missions } from "./data/missions";
+import { Alert } from "react-native" 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Feather, MaterialIcons } from "@expo/vector-icons";
+
+
 
 const getTimeSlot = () => {
   const h = new Date().getHours();
@@ -13,6 +19,12 @@ const getTimeSlot = () => {
   if (h < 18) return 'afternoon';
   return 'evening';
 };
+
+const getToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
 
 const recommendedByTime = {
   morning: ['물 1컵 마시기', '가벼운 스트레칭 5분', '감사 3줄 적기'],
@@ -22,32 +34,99 @@ const recommendedByTime = {
 
 const pickRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// 🔔 즉시 알림 테스트용 함수
-const sendTestNotification = async () => {
-  const trigger =
-    Platform.OS === 'android'
-      ? { seconds: 1, channelId: LOCAL_NOTIFICATION_CHANNEL_ID }
-      : { seconds: 1 };
-
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: '보들보틀 🌱',
-      body: '지금 물 1컵 마실 시간이에요!',
-      data: { screen: 'Home' },
-      sound: 'default',
-    },
-    trigger,
-  });
-};
 
 const HomeScreen = ({ navigation }) => {
   const [selectedMission, setSelectedMission] = useState('물 1컵 마시기'); // 🔹 key와 맞추기
-  const [completed, setCompleted] = useState(0);
+  //const [completed, setCompleted] = useState(0);
+  const { completedMissions, setCompletedMissions, addCompletedMission, alarms, setAlarms, cookies, cookieStats, addCompletedAlarms } = useContext(AppContext);
+  
+  // 🎯 오늘의 미션 3개 상태
+  const [dailyMissions, setDailyMissions] = useState([]);
+  const [completedDailyIds, setCompletedDailyIds] = useState([]);
+
+  //홈스크린 알람 완료하기 기능
+  const [todayAlarms, setTodayAlarms] = useState([]);
+  const saveAlarmsToStorage = async (list) => {
+  await AsyncStorage.setItem("@bottle_alarms", JSON.stringify(list));
+  };
+
+
+  useEffect(() => {
+  const loadAlarms = async () => {
+    const stored = await AsyncStorage.getItem("@bottle_alarms");
+    if (!stored) return;
+
+    const all = JSON.parse(stored);
+
+    // Update context
+    setAlarms(all);
+
+    // Filter today’s alarms
+    const todayActive = all.filter(isAlarmToday);
+    setTodayAlarms(todayActive);
+  };
+
+  loadAlarms();
+}, []);
+
+ //helper that detects whether alarm applies today
+  const isAlarmToday = (alarm) => {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const todayStr = today.toISOString().split("T")[0]; // "YYYY-MM-DD"
+
+  if (!alarm.enabled) return false;
+
+  // Case 1: One-time alarm with a specific date
+  if (alarm.date) {
+    return alarm.date === todayStr;
+  }
+
+  // Case 2: Repeating alarm
+  // alarm.repeatDays is expected to be an array of numbers [0-6] representing days of the week
+  if (Array.isArray(alarm.repeatDays) && alarm.repeatDays.length > 0) {
+    return alarm.repeatDays.includes(dayOfWeek);
+  }
+
+  // If no date and no repeatDays, just assume one-time alarm?  
+  return false;
+};
+
+
+
+  const completeTask = async (alarmId) => {
+    const now = new Date();
+    const today = now.toISOString().split("T")[0]; // "2025-11-26"
+
+    const updated = alarms.map(a => {
+      if (a.id !== alarmId) return a;
+      if (a.completedDates?.includes(today)) return a;
+
+      addCompletedAlarms(a);
+
+      return {
+        ...a,
+        completedDates: [...(a.completedDates || []), today],
+      };
+    });
+
+    setAlarms(updated);
+    await saveAlarmsToStorage(updated);
+  };
+
 
   // 🌳 나무 배열 상태
-  const [forestTrees, setForestTrees] = useState([]);
+  //const [forestTrees, setForestTrees] = useState([]);
+  const [forestTrees, setForestTrees] = useState(() => {
+  return completedMissions.flatMap(m => {
+    return Array.from({ length: m.trees || 1 }).map((_, idx) => ({
+      id: `${m.id}-${idx}`,
+      emoji: m.emoji || '🌳',
+    }));
+  });
+});
   // 📝 완료 미션 기록
-  const [missionHistory, setMissionHistory] = useState([]);
+  //const [missionHistory, setMissionHistory] = useState([]);
 
   const timeSlot = getTimeSlot();
   const [recommendVisible, setRecommendVisible] = useState(false);
@@ -98,7 +177,7 @@ const HomeScreen = ({ navigation }) => {
 
   // ✅ 미션 완료 시: 기록 + 나무 추가
   const completeMission = () => {
-    setCompleted((c) => c + 1);
+    //setCompleted((c) => c + 1);
 
     const config = missionConfigs[selectedMission] || {
       trees: 1,
@@ -133,7 +212,7 @@ const HomeScreen = ({ navigation }) => {
       seconds: now.getSeconds(),
       timestamp: now.getTime(), // 정렬용
     };
-    setMissionHistory((prev) => [
+    setCompletedMissions((prev) => [
       {
         id: `${now.getTime()}-${Math.random().toString(36).slice(2, 7)}`,
         mission: selectedMission,
@@ -147,111 +226,297 @@ const HomeScreen = ({ navigation }) => {
     setRecommendVisible(true);
   };
 
-  const acceptRecommended = () => {
-    setSelectedMission(recommendedMission);
-    setRecommendVisible(false);
+
+// 앱 실행 시 오늘의 미션 3개 추출
+useEffect(() => {
+  const shuffled = [...missions].sort(() => Math.random() - 0.5);
+  setDailyMissions(shuffled.slice(0, 3));
+}, []);
+//미션 바꾸기 함수
+const replaceMission = async (index) => {
+  const usedIds = dailyMissions.map(m => m.id);
+  const candidates = missions.filter(m => !usedIds.includes(m.id));
+
+  if (candidates.length === 0) return;
+
+  const newMission = candidates[Math.floor(Math.random() * candidates.length)];
+
+  const newList = [...dailyMissions];
+  newList[index] = newMission;
+  
+  setDailyMissions(newList);
+  await AsyncStorage.setItem("dailyMissions", JSON.stringify(newList));
+};
+
+
+useEffect(() => {
+  const loadCompleted = async () => {
+    const stored = await AsyncStorage.getItem("completedDailyIds");
+    if (stored) {
+      setCompletedDailyIds(JSON.parse(stored));
+    }
   };
 
+  loadCompleted();
+}, []);
+//미션 저장
+useEffect(() => {
+  const loadDaily = async () => {
+    const today = getToday();
+    const storedDate = await AsyncStorage.getItem("dailyDate");
+    const storedMissions = await AsyncStorage.getItem("dailyMissions");
+    const storedCompleted = await AsyncStorage.getItem("completedDailyIds");
+
+    // If it's the same day → load everything as-is
+    if (storedDate === today && storedMissions) {
+      setDailyMissions(JSON.parse(storedMissions));
+      if (storedCompleted) {
+        setCompletedDailyIds(JSON.parse(storedCompleted));
+      }
+      return;
+    }
+
+    // If date changed → generate NEW missions
+    const shuffled = [...missions].sort(() => Math.random() - 0.5);
+    const todayMissions = shuffled.slice(0, 3);
+
+    setDailyMissions(todayMissions);
+    setCompletedDailyIds([]);
+
+    await AsyncStorage.setItem("dailyMissions", JSON.stringify(todayMissions));
+    await AsyncStorage.setItem("completedDailyIds", JSON.stringify([]));
+    await AsyncStorage.setItem("dailyDate", today);
+  };
+
+  loadDaily();
+}, []);
+
+const completeDailyMission = async (mission) => {
+  Alert.alert(
+    "미션 확인",
+    "정말로 이 미션을 완료하셨나요?",
+    [
+      { text: "취소", style: "cancel" },
+      {
+        text: "네!",
+        onPress: async () => {
+          const now = new Date();
+          const localTime = {
+            year: now.getFullYear(),
+            month: now.getMonth(),
+            date: now.getDate(),
+            hours: now.getHours(),
+            minutes: now.getMinutes(),
+            seconds: now.getSeconds(),
+            timestamp: now.getTime(),
+          };
+
+          addCompletedMission({
+            id: `${now.getTime()}-${Math.random()}`,
+            mission: mission.name,      // Use mission name!
+            completedAt: localTime,
+            timeSlot,
+            emoji: "🌱",                 // You can map this based on water/waste/co2 if needed
+            water: mission.water,
+            waste: mission.waste,
+            co2: mission.co2,
+          });
+          
+          const updated = [...completedDailyIds, mission.id];
+          setCompletedDailyIds(updated);
+
+          // SAVE CORRECTLY
+          await AsyncStorage.setItem(
+            "completedDailyIds",
+            JSON.stringify(updated)
+          );
+        },
+      },
+    ]
+  );
+};
+
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>보들보틀</Text>
+    <View style={{flex: 1}}>
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.title}>보들보틀</Text>
 
-      {/* 미션 (선택한 미션) */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>선택한 미션</Text>
-        <Text style={styles.missionText}>{selectedMission}</Text>
-        <View style={styles.row}>
-          <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={completeMission}>
-            <Text style={styles.btnPrimaryText}>미션 완료</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.btn, styles.btnGhost]}
-            onPress={() => setSelectedMission('가벼운 스트레칭 5분')}
-          >
-            <Text style={styles.btnGhostText}>다른 미션 고르기</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* 추천 미션(시간대/게임 선물 UI) */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>추천 미션</Text>
-        <View style={styles.recoRow}>
-          <Text style={styles.recoHint}>
-            {timeSlot === 'morning' && '아침'}
-            {timeSlot === 'afternoon' && '오후'}
-            {timeSlot === 'evening' && '저녁'}
-            {' 시간대에 딱 맞는 추천이에요.'}
+        {/* 미션 (선택한 미션) */}
+        {/*기존 미션 부분 삭제*/}
+        {/* 추천 미션(시간대/게임 선물 UI) */}
+        {/*기존 추천 미션 부분 삭제*/}
+        {/* 나무 숲 (내 성과) */}
+        <View style={styles.card}>
+          <Text style={styles.cardHeader}>나의 숲(성과)</Text>
+          <TreeForest trees={forestTrees} />
+          <Text style={styles.expText}>
+            완료 미션: {completedMissions.length}개 / 심은 나무: {forestTrees.length}그루
           </Text>
+        </View>
+        {/* 알람 확인하기 버튼 */}
+        <View style={[styles.card]}>
+          <Text style={{fontWeight: 800, fontSize: 20, marginTop: 10, marginBottom: 10}}>🔔 오늘의 알림 목록</Text>
+
+          {todayAlarms.length === 0 ? (
+          <Text style={{ color: '#aaa', marginTop: 10 }}>
+            오늘은 예정된 미션이 없어요 🌱
+          </Text>
+          ) : (
+            todayAlarms.map((alarm) => {
+              const now = new Date();
+              const today = now.toISOString().split("T")[0];
+              const alreadyCompleted = alarm.completedDates?.includes(today);
+
+              return (
+                <View
+                  key={alarm.id}
+                  style={{
+                    padding: 16,
+                    marginVertical: 8,
+                    backgroundColor: "white",
+                    borderRadius: 12,
+                    shadowOpacity: 0.1,
+                    shadowRadius: 3,
+                  }}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: "600" }}>
+                    {alarm.message}
+                  </Text>
+
+                  <Text style={{ color: "#666", marginTop: 4 }}>
+                    {alarm.ampm} {alarm.hour}:{alarm.minute.toString().padStart(2, '0')}
+                  </Text>
+
+                  {!alreadyCompleted ? (
+                    <TouchableOpacity
+                      onPress={() => completeTask(alarm.id)}
+                      style={{
+                        backgroundColor: "#4CAF50",
+                        paddingVertical: 8,
+                        paddingHorizontal: 14,
+                        borderRadius: 8,
+                        marginTop: 12,
+                        alignSelf: "flex-start",
+                      }}
+                    >
+                      <Text style={{ color: "white", fontWeight: "600" }}>완료하기</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={{flexDirection: 'row'}}>
+                      <View style={{flex: 1}}>
+                        <Text style={{ marginTop: 10, color: "#4CAF50", fontWeight: "700" }}>
+                          ✔ 완료됨
+                        </Text>
+                      </View>
+                      <View style={{flex: 1}}>
+                        <Text style={{ marginTop: 10, color: "#8b5f36ff", fontWeight: "600" }}>
+                            + 🍪쿠키 10개 적립!
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* 캘린더 버튼 */}
+        <View style={{ marginTop: 16 }}>
           <TouchableOpacity
             style={[styles.btn, styles.btnOutline]}
-            onPress={() => setRecommendVisible(true)}
+            onPress={() => navigation.navigate('Calendar')}
           >
-            <Text style={styles.btnOutlineText}>🎁 선물 열기</Text>
+            <Text style={styles.btnOutlineText}>📅 캘린더 보기</Text>
           </TouchableOpacity>
         </View>
-      </View>
+        {/* 🔔 알림 테스트 버튼 */}
+      
+        {/* 오늘의 추가 미션 */}
+        <View style={[styles.card, {marginTop: 20}]}>
+          <Text style={[styles.cardHeader, {fontSize: 20}]}>✨ 오늘의 추가 미션</Text>
+          {dailyMissions.map((m, index) => {
+          const isDone = completedDailyIds.includes(m.id);
+            return (
+          <View 
+          key={m.id}
+          style={{
+          paddingVertical: 10,
+          borderBottomWidth: index < 2 ? 1 : 0,
+          borderColor: "#eee",
+          }}>
+          <Text style={{ fontSize: 16, fontWeight: "600" }}>{m.name}</Text>
+          <Text style={{ color: "#4b5563", marginVertical: 4 }}>
+          {m.explanation}
+          </Text>
 
-      {/* 나무 숲 (내 성과) */}
-      <View style={styles.card}>
-        <Text style={styles.cardHeader}>나의 숲(성과)</Text>
-        <TreeForest trees={forestTrees} />
-        <Text style={styles.expText}>
-          완료 미션: {completed}개 / 심은 나무: {forestTrees.length}그루
-        </Text>
-      </View>
+          <Text style={{ fontSize: 12, color: "#6b7280" }}>
+          💧 물 {m.water}mL | 🗑️ 쓰레기 {m.waste} kg | 🌍 CO₂ {m.co2}g 절약
+          </Text>
+          {isDone ? (
+            <Text style={{ marginTop: 10, color: "#4CAF50", fontWeight: "700" }}>
+              완료! 🎉
+            </Text>
+          ) : (
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnGhost, { flex: 1 }]}
+                onPress={() => replaceMission(index)}
+              >
+                <Text style={styles.btnGhostText}>바꾸기</Text>
+              </TouchableOpacity>
 
-      {/* 이동 버튼들 */}
-      <View style={styles.navBtns}>
-        <TouchableOpacity
-          style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
-          onPress={() => navigation.navigate('Records', { history: missionHistory })}
-        >
-          <Text style={styles.btnPrimaryText}>내 기록 보기</Text>
-        </TouchableOpacity>
-        <View style={{ width: 12 }} />
-        <TouchableOpacity
-          style={[styles.btn, styles.btnSecondary, { flex: 1 }]}
-          onPress={() => navigation.navigate('Notifications')}
-        >
-          <Text style={styles.btnSecondaryText}>알림 커스터마이징</Text>
-        </TouchableOpacity>
-      </View>
+              <TouchableOpacity
+                style={[styles.btn, styles.btnPrimary, { flex: 1 }]}
+                onPress={() => completeDailyMission(m)}
+              >
+                <Text style={styles.btnPrimaryText}>완료하기</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>);
+          })}
+        </View>
+        <StatusBar style="auto" />
 
-      {/* 캘린더 버튼 */}
-      <View style={{ marginTop: 16 }}>
-        <TouchableOpacity
-          style={[styles.btn, styles.btnOutline]}
-          onPress={() => navigation.navigate('Calendar', { history: missionHistory })}
-        >
-          <Text style={styles.btnOutlineText}>📅 캘린더 보기</Text>
-        </TouchableOpacity>
-      </View>
+        {/* 추천 미션 선물 모달 */}
+        
+      </ScrollView>
+      {/* Bottom Navigation */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Notifications')}
+            style={styles.bottomButton}
+          >
+            <Feather name="bell" size={22} color="#666" />
+            <Text style={styles.bottomLabel}>알림</Text>
+          </TouchableOpacity>
 
-      {/* 🔔 알림 테스트 버튼 */}
-      <View style={{ marginTop: 16 }}>
-        <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={sendTestNotification}>
-          <Text style={styles.btnPrimaryText}>알림 테스트 보내기</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Home')}
+            style={styles.bottomHome}
+          >
+            <Feather name="home" size={26} color="#4CAF50" />
+            <Text style={[styles.bottomLabel, { color: '#4CAF50'}]}>홈</Text>
+          </TouchableOpacity>
 
-      <StatusBar style="auto" />
-
-      {/* 추천 미션 선물 모달 */}
-      <GiftRecommend
-        visible={recommendVisible}
-        mission={recommendedMission}
-        onAccept={acceptRecommended}
-        onClose={() => setRecommendVisible(false)}
-      />
-    </ScrollView>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Records')}
+            style={styles.bottomButton}
+          >
+            <Feather name="user" size={22} color="#666" />
+            <Text style={styles.bottomLabel}>마이</Text>
+          </TouchableOpacity>
+        </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     padding: 20,
-    paddingBottom: 40,
+    paddingBottom: 80,
+    backgroundColor: '#F8FFF4',
   },
   title: {
     fontSize: 28,
@@ -341,6 +606,27 @@ const styles = StyleSheet.create({
     marginTop: 4,
     color: '#4b5563',
     fontSize: 12,
+  },
+   /* Bottom Nav */
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "#fff",
+    paddingVertical: 10,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderColor: "#eee",
+  },
+  bottomButton: { alignItems: "center" },
+  bottomLabel: { fontSize: 12, color: "#666", marginTop: 2 },
+  bottomHome: { alignItems: "center" },
+  statistics_container: {
+    padding: 20,
+    paddingBottom: 40,
   },
 });
 

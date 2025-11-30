@@ -3,6 +3,9 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView, TextInput, Platfo
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import WeekDaySelect from './WeekDaySelect';
+import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { AppContext } from "./AppContext";
+
 const getNextTriggerDate = (hour, minute, ampm) => {
   const h24 = ampm === "PM" ? (hour % 12) + 12 : hour % 12;
 
@@ -136,7 +139,7 @@ try {
   };
 }
 
-const NotificationsScreen = () => {
+const NotificationsScreen = ({ navigation }) => {
   // 알림 목록 관리
   const [alarms, setAlarms] = useState([]);
   const [isAdding, setIsAdding] = useState(false);
@@ -424,6 +427,7 @@ useEffect(() => {
       repeatDaily: repeatDays?.length === 7, // true if all days
       selectedYMD: repeatDaily ? null : { ...selectedYMD },
       enabled: editingId ? alarms.find(a => a.id === editingId)?.enabled : true,
+      completedDates: editingId ? alarms.find(a => a.id === editingId)?.completedDates || [] : [],  // ← NEW FIELD
     };
 
     // 저장할 시간 데이터 확인 로그
@@ -493,20 +497,6 @@ useEffect(() => {
     }
   };
 
-  const sendTestNow = async () => {
-    try {
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: '보들보틀 🌱',
-          body: message || '테스트 알림입니다.',
-          data: { screen: 'Home' },
-        },
-        trigger: null,
-      });
-    } catch (e) {
-      console.warn('즉시 알림 오류:', e);
-    }
-  };
 
   const clearAllSchedules = async () => {
     try {
@@ -520,23 +510,50 @@ useEffect(() => {
       console.warn('알림 해제 오류:', e);
     }
   };
-  
 
   // 알림이 없고 추가 모드도 아닐 때
   if (alarms.length === 0 && !isAdding) {
   return (
-    <ScrollView contentContainerStyle={styles.screenContainer}>
-      <Text style={styles.title}>알림 시간 설정</Text>
-        <View style={styles.emptyCard}>
-          <Text style={styles.emptyText}>저장된 알림이 없습니다</Text>
+    <View style={{flex: 1}}>
+      <ScrollView contentContainerStyle={styles.screenContainer}>
+        <Text style={styles.title}>알림 시간 설정</Text>
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>저장된 알림이 없습니다</Text>
+            <TouchableOpacity
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={() => setIsAdding(true)}
+            >
+              <Text style={styles.btnPrimaryText}>알림 추가하기</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+        {/* Bottom Navigation */}
+        <View style={styles.bottomBar}>
           <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary]}
-            onPress={() => setIsAdding(true)}
+            onPress={() => navigation.navigate('Notifications')}
+            style={styles.bottomButton}
           >
-            <Text style={styles.btnPrimaryText}>알림 추가하기</Text>
+            <Feather name="bell" size={22} color="#666" />
+            <Text style={styles.bottomLabel}>알림</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Home')}
+            style={styles.bottomHome}
+          >
+            <Feather name="home" size={26} color="#4CAF50" />
+            <Text style={[styles.bottomLabel, { color: '#4CAF50'}]}>홈</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Records')}
+            style={styles.bottomButton}
+          >
+            <Feather name="user" size={22} color="#666" />
+            <Text style={styles.bottomLabel}>마이</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+      </View>
     );
   }
 
@@ -717,85 +734,113 @@ useEffect(() => {
 
   // 저장된 알림 목록 표시
   return (
-    <ScrollView contentContainerStyle={styles.screenContainer}>
-    <View style={styles.card}>
-      <Text style={styles.cardHeader}>🔔 알림 시간 설정</Text>
-      <TouchableOpacity
-            style={[styles.btn, styles.btnPrimary]}
-            onPress={() => setIsAdding(true)}
-          >
-            <Text style={styles.btnPrimaryText}>+ 추가</Text>
-          </TouchableOpacity>
-    </View>
-
+    <View style={{flex: 1}}>
+      <ScrollView contentContainerStyle={styles.screenContainer}>
       <View style={styles.card}>
-        <View style={styles.listHeader}>
-          <Text style={styles.cardHeader}>저장된 알림 ({alarms.length}개)</Text>
-        </View>
-
-        {alarms.map((alarm) => (
-          <View key={alarm.id} style={styles.alarmItem}>
-            <View style={styles.alarmInfo}>
-              {alarm.message && (
-                <Text style={styles.alarmMessage}>{alarm.message}</Text>
-              )}
-              
-              <Text style={styles.alarmDesc}>
-                {alarm.repeatDaily
-                  ? '매일 반복'
-                  : alarm.selectedYMD
-                    ? `${alarm.selectedYMD.year}-${pad2(alarm.selectedYMD.month + 1)}-${pad2(alarm.selectedYMD.day)} 한 번`
-                    : alarm.repeatDays?.length
-                      ? `매주 ${alarm.repeatDays.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')} 반복`
-                      : '한 번 반복'}
-              </Text>
-
-              <Text style={styles.alarmTime}>
-                {alarm.ampm} {pad2(alarm.hour)}:{pad2(alarm.minute)}
-              </Text>
-            </View>
-            <View style={styles.alarmActions}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnGhost]}
-                onPress={() => setEditingId(alarm.id)}
-              >
-                <Text style={styles.btnGhostText}>수정</Text>
-              </TouchableOpacity>
-              {/* 🔥 NEW: Toggle switch */}
-              <TouchableOpacity
-                onPress={() => toggleAlarm(alarm.id)}
-                style={[
-                  styles.toggle,
-                  alarm.enabled ? styles.toggleOn : styles.toggleOff
-                ]}
-              >
-                <View
-                  style={[
-                    styles.toggleCircle,
-                    alarm.enabled ? styles.toggleCircleOn : styles.toggleCircleOff
-                  ]}
-                />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.btnDelete}
-                onPress={() => deleteAlarm(alarm.id)}
-              >
-                <Text style={styles.btnDeleteText}>❌</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-
-        <View style={{ height: 12 }} />
-        <View style={{ height: 8 }} />
+        <Text style={styles.cardHeader}>🔔 알림 시간 설정</Text>
         <TouchableOpacity
-          style={[styles.btn, styles.btnOutline]}
-          onPress={clearAllSchedules}
-        >
-          <Text style={styles.btnOutlineText}>모두 해제</Text>
-        </TouchableOpacity>
+              style={[styles.btn, styles.btnPrimary]}
+              onPress={() => setIsAdding(true)}
+            >
+              <Text style={styles.btnPrimaryText}>+ 추가</Text>
+            </TouchableOpacity>
       </View>
-    </ScrollView>
+
+        <View style={styles.card}>
+          <View style={styles.listHeader}>
+            <Text style={styles.cardHeader}>저장된 알림 ({alarms.length}개)</Text>
+          </View>
+
+          {alarms.map((alarm) => (
+            <View key={alarm.id} style={styles.alarmItem}>
+              <View style={styles.alarmInfo}>
+                {alarm.message && (
+                  <Text style={styles.alarmMessage}>{alarm.message}</Text>
+                )}
+                
+                <Text style={styles.alarmDesc}>
+                  {alarm.repeatDaily
+                    ? '매일 반복'
+                    : alarm.selectedYMD
+                      ? `${alarm.selectedYMD.year}-${pad2(alarm.selectedYMD.month + 1)}-${pad2(alarm.selectedYMD.day)} 한 번`
+                      : alarm.repeatDays?.length
+                        ? `매주 ${alarm.repeatDays.map(d => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d]).join(', ')} 반복`
+                        : '한 번 반복'}
+                </Text>
+
+                <Text style={styles.alarmTime}>
+                  {alarm.ampm} {pad2(alarm.hour)}:{pad2(alarm.minute)}
+                </Text>
+              </View>
+              <View style={styles.alarmActions}>
+                <TouchableOpacity
+                  style={[styles.btn, styles.btnGhost]}
+                  onPress={() => setEditingId(alarm.id)}
+                >
+                  <Text style={styles.btnGhostText}>수정</Text>
+                </TouchableOpacity>
+                {/* 🔥 NEW: Toggle switch */}
+                <TouchableOpacity
+                  onPress={() => toggleAlarm(alarm.id)}
+                  style={[
+                    styles.toggle,
+                    alarm.enabled ? styles.toggleOn : styles.toggleOff
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.toggleCircle,
+                      alarm.enabled ? styles.toggleCircleOn : styles.toggleCircleOff
+                    ]}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.btnDelete}
+                  onPress={() => deleteAlarm(alarm.id)}
+                >
+                  <Text style={styles.btnDeleteText}>❌</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+
+          <View style={{ height: 12 }} />
+          <View style={{ height: 8 }} />
+          <TouchableOpacity
+            style={[styles.btn, styles.btnOutline]}
+            onPress={clearAllSchedules}
+          >
+            <Text style={styles.btnOutlineText}>모두 해제</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+      {/* Bottom Navigation */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Notifications')}
+            style={styles.bottomButton}
+          >
+            <Feather name="bell" size={22} color="#4CAF50" />
+            <Text style={[styles.bottomLabel, { color: '#4CAF50'}]}>알림</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Home')}
+            style={styles.bottomHome}
+          >
+            <Feather name="home" size={26} color="#666" />
+            <Text style={styles.bottomLabel}>홈</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Records')}
+            style={styles.bottomButton}
+          >
+            <Feather name="user" size={22} color="#666" />
+            <Text style={styles.bottomLabel}>마이</Text>
+          </TouchableOpacity>
+        </View>
+    </View>
   );
 };
 
@@ -1139,7 +1184,27 @@ iosMessage: {
   color: '#000',
   lineHeight: 20,
 },
-
+ /* Bottom Nav */
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    backgroundColor: "#fff",
+    paddingVertical: 10,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderColor: "#eee",
+  },
+  bottomButton: { alignItems: "center" },
+  bottomLabel: { fontSize: 12, color: "#666", marginTop: 2 },
+  bottomHome: { alignItems: "center" },
+  statistics_container: {
+    padding: 20,
+    paddingBottom: 40,
+  },
 });
 
 export default NotificationsScreen;

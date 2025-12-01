@@ -1,6 +1,6 @@
 // HomeScreen.js
 import { StatusBar } from 'expo-status-bar';
-import React, { useMemo, useState, useContext, useEffect } from 'react';
+import React, { useMemo, useState, useContext, useEffect, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import TreeForest from './TreeForest';
 import * as Notifications from 'expo-notifications';
@@ -23,6 +23,32 @@ const getTimeSlot = () => {
 const getToday = () => {
   const d = new Date();
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
+const getDaysInMonth = (date) => {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+};
+
+const getFirstDayOfMonth = (date) => {
+  return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+};
+
+const formatYearMonth = (date) => {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  return `${year}년 ${month}월`;
+};
+
+const isSameDay = (date1, date2) => {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+};
+
+const isToday = (date) => {
+  return isSameDay(date, new Date());
 };
 
 
@@ -141,7 +167,178 @@ const HomeScreen = ({ navigation }) => {
     () => pickRandom(recommendedByTime[timeSlot]),
     [timeSlot]
   );
+ // 🔽🔽🔽 여기부터 달력 관련 상태 & 함수 추가 🔽🔽🔽
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(new Date());
 
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth();
+  const daysInMonth = getDaysInMonth(currentDate);
+  const firstDay = getFirstDayOfMonth(currentDate);
+
+  // 특정 날짜에 완료한 미션 수 계산
+  const getMissionCountForDate = useCallback(
+    (date) => {
+      const targetYear = date.getFullYear();
+      const targetMonth = date.getMonth();
+      const targetDay = date.getDate();
+
+      return completedMissions.filter((mission) => {
+        const completedAt = mission.completedAt;
+        // 로컬 시간 객체인 경우
+        if (completedAt && typeof completedAt === 'object' && completedAt.year !== undefined) {
+          return (
+            completedAt.year === targetYear &&
+            completedAt.month === targetMonth &&
+            completedAt.date === targetDay
+          );
+        }
+        // ISO 문자열인 경우 (하위 호환)
+        const missionDate = new Date(completedAt);
+        return (
+          missionDate.getFullYear() === targetYear &&
+          missionDate.getMonth() === targetMonth &&
+          missionDate.getDate() === targetDay
+        );
+      }).length;
+    },
+    [completedMissions]
+  );
+
+  // 미션 수에 따른 초록색 강도 계산
+  const getGreenBackgroundColor = (missionCount) => {
+    if (missionCount === 0) return null;
+
+    const maxMissions = 5;
+    const intensity = Math.min(missionCount / maxMissions, 1);
+
+    const lightGreen = { r: 220, g: 252, b: 231 }; // #dcfce7
+    const darkGreen = { r: 22, g: 163, b: 74 }; // #16a34a
+
+    const r = Math.round(lightGreen.r + (darkGreen.r - lightGreen.r) * intensity);
+    const g = Math.round(lightGreen.g + (darkGreen.g - lightGreen.g) * intensity);
+    const b = Math.round(lightGreen.b + (darkGreen.b - lightGreen.b) * intensity);
+
+    return `rgb(${r}, ${g}, ${b})`;
+  };
+
+  const goToPreviousMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
+
+  const goToNextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
+
+  const goToToday = () => {
+    const today = new Date();
+    setCurrentDate(today);
+    setSelectedDate(today);
+  };
+
+  const handleDateSelect = (day) => {
+    const newDate = new Date(year, month, day);
+    setSelectedDate(newDate);
+  };
+
+  const renderCalendarDays = () => {
+    const days = [];
+    const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+
+    // 요일 헤더
+    const weekDayHeaders = weekDays.map((day, index) => (
+      <View key={`header-${index}`} style={styles.weekDayHeader}>
+        <Text
+          style={[
+            styles.weekDayText,
+            index === 0 && styles.sundayText,
+            index === 6 && styles.saturdayText,
+          ]}
+        >
+          {day}
+        </Text>
+      </View>
+    ));
+
+    // 첫 주 앞쪽 빈 칸
+    const emptyDays = [];
+    for (let i = 0; i < firstDay; i++) {
+      emptyDays.push(
+        <View key={`empty-${i}`} style={styles.dayCell}>
+          <Text style={styles.emptyDayText}></Text>
+        </View>
+      );
+    }
+
+    // 실제 날짜 셀
+    const dateCells = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      const isSelected = isSameDay(date, selectedDate);
+      const isTodayDate = isToday(date);
+      const missionCount = getMissionCountForDate(date);
+      const greenBackgroundColor = getGreenBackgroundColor(missionCount);
+
+      dateCells.push(
+        <TouchableOpacity
+          key={`day-${day}`}
+          style={[
+            styles.dayCell,
+            isSelected && styles.selectedDayCell,
+            isTodayDate && !isSelected && styles.todayCell,
+            !isSelected && greenBackgroundColor && { backgroundColor: greenBackgroundColor },
+          ]}
+          onPress={() => handleDateSelect(day)}
+        >
+          <Text
+            style={[
+              styles.dayText,
+              isSelected && styles.selectedDayText,
+              isTodayDate && !isSelected && styles.todayText,
+              (firstDay + day - 1) % 7 === 0 && styles.sundayText,
+              (firstDay + day - 1) % 7 === 6 && styles.saturdayText,
+            ]}
+          >
+            {day}
+          </Text>
+        </TouchableOpacity>
+      );
+    }
+
+    const allDays = [...emptyDays, ...dateCells];
+
+    // 마지막 주도 7칸 맞추기
+    const totalCells = allDays.length;
+    const remainingCells = totalCells % 7;
+    if (remainingCells > 0) {
+      const emptyCellsNeeded = 7 - remainingCells;
+      for (let i = 0; i < emptyCellsNeeded; i++) {
+        allDays.push(
+          <View key={`empty-end-${i}`} style={styles.dayCell}>
+            <Text style={styles.emptyDayText}></Text>
+          </View>
+        );
+      }
+    }
+
+    const weeks = [];
+    for (let i = 0; i < allDays.length; i += 7) {
+      weeks.push(
+        <View key={`week-${i}`} style={styles.weekRow}>
+          {allDays.slice(i, i + 7)}
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.calendarContainer}>
+        <View style={styles.weekDayRow}>{weekDayHeaders}</View>
+        {weeks}
+      </View>
+    );
+  };
+  // 🔼🔼🔼 달력 관련 끝 🔼🔼🔼
+  
   // ✅ 미션별 나무/식물 아이콘 정의 (통일감 있게)
   const missionConfigs = {
     '물 1컵 마시기': {
@@ -353,13 +550,51 @@ const completeDailyMission = async (mission) => {
         {/* 추천 미션(시간대/게임 선물 UI) */}
         {/*기존 추천 미션 부분 삭제*/}
         {/* 나무 숲 (내 성과) */}
-        <View style={styles.card}>
+        {/* <View style={styles.card}>
           <Text style={styles.cardHeader}>나의 숲(성과)</Text>
           <TreeForest trees={forestTrees} />
           <Text style={styles.expText}>
             완료 미션: {completedMissions.length}개 / 심은 나무: {forestTrees.length}그루
           </Text>
+        </View> */}
+          {/* 달력 (성과 시각화) */}
+        <View style={styles.card}>
+          {/* 달력 헤더 (월 이동 / 오늘 버튼) */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={goToPreviousMonth} style={styles.navButton}>
+              <Text style={styles.navButtonText}>‹</Text>
+            </TouchableOpacity>
+
+            <View style={styles.headerCenter}>
+              <Text style={styles.monthYearText}>{formatYearMonth(currentDate)}</Text>
+              <TouchableOpacity onPress={goToToday} style={styles.todayButton}>
+                <Text style={styles.todayButtonText}>오늘</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity onPress={goToNextMonth} style={styles.navButton}>
+              <Text style={styles.navButtonText}>›</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 달력 그리드 */}
+          {renderCalendarDays()}
+
+          {/* 선택된 날짜 정보 */}
+          <View style={{ marginTop: 16 }}>
+            <Text style={styles.cardHeader}>선택된 날짜</Text>
+            <Text style={styles.selectedDateText}>
+              {selectedDate.getFullYear()}년 {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
+            </Text>
+            <Text style={styles.selectedDateSubtext}>
+              {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일
+            </Text>
+            <Text style={styles.missionCountText}>
+              완료한 미션: {getMissionCountForDate(selectedDate)}개
+            </Text>
+          </View>
         </View>
+        
         {/* 알람 확인하기 버튼 */}
         <View style={[styles.card]}>
           <Text style={{fontWeight: 800, fontSize: 20, marginTop: 10, marginBottom: 10}}>🔔 오늘의 알림 목록</Text>
@@ -635,6 +870,127 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingBottom: 40,
   },
+    // ...기존 스타일들...
+
+  /* Calendar styles */
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  navButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  navButtonText: {
+    fontSize: 20,
+    color: '#111827',
+    fontWeight: '600',
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: 'center',
+    marginHorizontal: 12,
+  },
+  monthYearText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  todayButton: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#111827',
+  },
+  todayButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  calendarContainer: {
+    width: '100%',
+  },
+  weekDayRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  weekDayHeader: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  weekDayText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  weekRow: {
+    flexDirection: 'row',
+    marginBottom: 4,
+  },
+  dayCell: {
+    flex: 1,
+    aspectRatio: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    margin: 2,
+  },
+  selectedDayCell: {
+    backgroundColor: '#111827',
+  },
+  todayCell: {
+    backgroundColor: '#f3f4f6',
+  },
+  dayText: {
+    fontSize: 15,
+    color: '#111827',
+    fontWeight: '500',
+  },
+  selectedDayText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  todayText: {
+    color: '#111827',
+    fontWeight: '700',
+  },
+  sundayText: {
+    color: '#ef4444',
+  },
+  saturdayText: {
+    color: '#3b82f6',
+  },
+  emptyDayText: {
+    color: 'transparent',
+  },
+  selectedDateText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  selectedDateSubtext: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  missionCountText: {
+    fontSize: 14,
+    color: '#16a34a',
+    fontWeight: '600',
+    marginTop: 8,
+  },
+
 });
 
 export default HomeScreen;

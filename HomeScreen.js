@@ -71,24 +71,31 @@ const HomeScreen = ({ navigation }) => {
 
  //helper that detects whether alarm applies today
   const isAlarmToday = (alarm) => {
-  const today = new Date();
-  const dayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-  const todayStr = today.toISOString().split("T")[0]; // "YYYY-MM-DD"
-
   if (!alarm.enabled) return false;
 
-  // Case 1: One-time alarm with a specific date
-  if (alarm.date) {
-    return alarm.date === todayStr;
+  const now = new Date();
+  const todayY = now.getFullYear();
+  const todayM = now.getMonth();      // 0-based
+  const todayD = now.getDate();
+  const dayOfWeek = now.getDay();     // 0 = Sun ~ 6 = Sat
+
+  // 1) 매일 반복 알림
+  if (alarm.repeatDaily) {
+    return true;
   }
 
-  // Case 2: Repeating alarm
-  // alarm.repeatDays is expected to be an array of numbers [0-6] representing days of the week
+  // 2) 요일 반복 알림 (repeatDays: [0~6])
   if (Array.isArray(alarm.repeatDays) && alarm.repeatDays.length > 0) {
     return alarm.repeatDays.includes(dayOfWeek);
   }
 
-  // If no date and no repeatDays, just assume one-time alarm?  
+  // 3) 특정 날짜 한 번 알림 (selectedYMD: {year, month, day})
+  if (alarm.selectedYMD) {
+    const { year, month, day } = alarm.selectedYMD;
+    return year === todayY && month === todayM && day === todayD;
+  }
+
+  // 그 외는 오늘 알림 아님
   return false;
 };
 

@@ -12,6 +12,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Notifications from 'expo-notifications';
 import WeekDaySelect from './WeekDaySelect';
 import { Feather } from '@expo/vector-icons';
+import { saveAlarmsForUser, loadAlarmsForUser } from "./firestoreHelpers";
 
 // ---- 시간 계산 유틸 ----
 const getNextTriggerDate = (hour, minute, ampm) => {
@@ -193,6 +194,9 @@ const NotificationsScreen = ({ navigation }) => {
         return;
       }
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(alarmsList));
+
+      // 🔥 Firestore에도 함께 저장
+      await saveAlarmsForUser(alarmsList);
     } catch (e) {
       console.warn('알림 저장 오류:', e);
     }
@@ -218,6 +222,18 @@ const NotificationsScreen = ({ navigation }) => {
 
   const loadAlarms = async () => {
     try {
+      // 1) 먼저 Firestore에서 로드 시도
+      const fromFirestore = await loadAlarmsForUser();
+      if (fromFirestore && Array.isArray(fromFirestore)) {
+        setAlarms(fromFirestore);
+        // 로컬에도 캐시
+        if (isAsyncStorageAvailable()) {
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fromFirestore));
+        }
+        return;
+      }
+
+      // 2) Firestore에 없으면 로컬 AsyncStorage에서 로드
       if (!isAsyncStorageAvailable()) {
         console.warn('AsyncStorage를 사용할 수 없습니다.');
         return;
@@ -226,6 +242,9 @@ const NotificationsScreen = ({ navigation }) => {
       if (stored) {
         const parsedAlarms = JSON.parse(stored);
         setAlarms(parsedAlarms);
+
+        // Firestore에 아직 없다면 저장
+        await saveAlarmsForUser(parsedAlarms);
       }
     } catch (e) {
       console.warn('알림 불러오기 오류:', e);

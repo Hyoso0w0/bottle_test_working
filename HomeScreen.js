@@ -10,6 +10,7 @@ import { missions } from "./data/missions";
 import { Alert } from "react-native" 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
+import { saveMissionCompletion } from "./firestoreHelpers";
 
 
 
@@ -515,16 +516,20 @@ const completeDailyMission = async (mission) => {
             timestamp: now.getTime(),
           };
 
+          // 1) AppContext 로컬 상태 업데이트
           addCompletedMission({
             id: `${now.getTime()}-${Math.random()}`,
-            mission: mission.name,      // Use mission name!
+            mission: mission.name,
             completedAt: localTime,
             timeSlot,
-            emoji: "🌱",                 // You can map this based on water/waste/co2 if needed
+            emoji: "🌱",
             water: mission.water,
             waste: mission.waste,
             co2: mission.co2,
           });
+          
+           // 2) Firestore에 사용자별 완료 기록 + 통계 저장
+          await saveMissionCompletion(mission, localTime, timeSlot);
           
           const updated = [...completedDailyIds, mission.id];
           setCompletedDailyIds(updated);

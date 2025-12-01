@@ -1,10 +1,21 @@
 // App.js
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import AppProvider from './AppContext'
+
+// 🔥 Firebase Auth 관련
+import { onAuthStateChanged } from 'firebase/auth';
+import { auth } from './firebase';
+import { signOut } from 'firebase/auth';
+
+// 로그인/시작 화면
+import LoginScreen from './LoginScreen';
+import StartScreen from './StartScreen';
+
+// 전역 Context
+import AppProvider from './AppContext';
 
 // AsyncStorage 안전하게 import
 let AsyncStorage;
@@ -31,11 +42,12 @@ try {
   };
 }
 
+// 화면들
 import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
 import NotificationsScreen from './NotificationsScreen';
 import CalendarScreen from './CalendarScreen';
-import ReportScreen from './ReportScreen'
+import ReportScreen from './ReportScreen';
 
 // 알림 핸들러 설정 (앱이 foreground일 때 어떻게 보일지)
 Notifications.setNotificationHandler({
@@ -60,7 +72,22 @@ export default function App() {
   const notificationListener = useRef();
   const responseListener = useRef();
 
-  // 알림 스케줄링 헬퍼 함수
+  // ✅ 로그인 상태
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // ✅ Firebase auth 구독
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setUser(u);
+      setAuthLoading(false);
+    });
+    return unsub;
+  }, []);
+
+  const onLogout = () => signOut(auth);
+
+  // 알림 스케줄링 헬퍼 함수 (필요하면 NotificationsScreen 등에서 import해서 써도 됨)
   const scheduleAlarms = async (alarmsList) => {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
@@ -74,66 +101,82 @@ export default function App() {
       for (const alarm of alarmsList) {
         // 저장된 시간 데이터 확인 (hour, minute, ampm)
         if (!alarm.hour || alarm.minute === undefined || !alarm.ampm) {
-          console.warn(`알림 시간 데이터 누락: ID ${alarm.id}, hour: ${alarm.hour}, minute: ${alarm.minute}, ampm: ${alarm.ampm}`);
+          console.warn(
+            `알림 시간 데이터 누락: ID ${alarm.id}, hour: ${alarm.hour}, minute: ${alarm.minute}, ampm: ${alarm.ampm}`
+          );
           continue;
         }
 
-        // 저장된 시간 데이터를 사용하여 24시간 형식으로 변환
         const hour24 = as24h(alarm.hour, alarm.ampm);
         const content = {
           title: '보들보틀 🌱',
-          body: alarm.message || `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} 알림이에요.`,
+          body:
+            alarm.message ||
+            `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(
+              alarm.minute
+            )} 알림이에요.`,
           data: { screen: 'Home', alarmId: alarm.id },
         };
 
         if (alarm.repeatDaily) {
-          // 매일 반복: 저장된 시간(hour, minute)을 사용하여 정확한 시간에 발송
+          // 매일 반복
           const now = new Date();
           const todayAtTime = new Date(
             now.getFullYear(),
             now.getMonth(),
             now.getDate(),
-            hour24,              // 저장된 hour를 24시간 형식으로 변환한 값
-            alarm.minute,        // 저장된 minute 값
+            hour24,
+            alarm.minute,
             0,
             0
           );
-          
-          // 첫 알림 시간 결정: 설정한 시간이 지났으면 내일, 안 지났으면 오늘
-          // 설정한 시간 이후로 바로 발송되도록 설정
+
           let firstNotificationTime = todayAtTime;
           if (todayAtTime <= now) {
-            // 오늘 시간이 지났으면 내일 같은 시간에 발송
-            firstNotificationTime = new Date(todayAtTime.getTime() + 24 * 60 * 60 * 1000);
+            // 오늘 시간이 지났으면 내일
+            firstNotificationTime = new Date(
+              todayAtTime.getTime() + 24 * 60 * 60 * 1000
+            );
           }
-          
+
           try {
-            // date + repeats 방식으로 매일 반복 알림 설정
-            const notificationId = await Notifications.scheduleNotificationAsync({
-              content,
-              trigger: { 
-                date: firstNotificationTime,
-                repeats: true 
-              },
-            });
-            const timeDesc = firstNotificationTime > todayAtTime ? '내일부터' : '오늘부터';
-            console.log(`알림 스케줄링 완료: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)} (${timeDesc} 시작, 첫 알림: ${firstNotificationTime.toLocaleString()}, 매일 반복, ID: ${notificationId})`);
+            const notificationId =
+              await Notifications.scheduleNotificationAsync({
+                content,
+                trigger: {
+                  date: firstNotificationTime,
+                  repeats: true,
+                },
+              });
+            const timeDesc =
+              firstNotificationTime > todayAtTime ? '내일부터' : '오늘부터';
+            console.log(
+              `알림 스케줄링 완료: ${alarm.ampm} ${pad2(
+                alarm.hour
+              )}:${pad2(
+                alarm.minute
+              )} (${timeDesc} 시작, 첫 알림: ${firstNotificationTime.toLocaleString()}, 매일 반복, ID: ${notificationId})`
+            );
           } catch (e) {
-            console.warn(`알림 스케줄링 실패: ${alarm.ampm} ${pad2(alarm.hour)}:${pad2(alarm.minute)}`, e);
+            console.warn(
+              `알림 스케줄링 실패: ${alarm.ampm} ${pad2(
+                alarm.hour
+              )}:${pad2(alarm.minute)}`,
+              e
+            );
           }
         } else if (alarm.selectedYMD) {
-          // 특정 날짜: 저장된 시간(hour, minute)과 날짜를 사용하여 정확한 시간에 발송
+          // 특정 날짜 한 번
           const when = new Date(
             alarm.selectedYMD.year,
             alarm.selectedYMD.month,
             alarm.selectedYMD.day,
-            hour24,              // 저장된 hour를 24시간 형식으로 변환한 값
-            alarm.minute,        // 저장된 minute 값
+            hour24,
+            alarm.minute,
             0,
             0
           );
           const now = new Date();
-          // 미래 시간이면 스케줄링 (설정한 시간 이후로 바로 발송)
           if (when > now) {
             await Notifications.scheduleNotificationAsync({
               content,
@@ -164,9 +207,6 @@ export default function App() {
           lightColor: '#FF231F7C',
         });
       }
-
-      // 2) 앱 시작 시에는 스케줄링하지 않음 (알림 발송 안 함)
-      // 알림은 저장 시에만 스케줄링되어 설정한 시간(예: 1시 30분)에 정확히 발송됨
     })();
 
     // 2) 알림 수신 리스너(앱 열려 있을 때)
@@ -175,31 +215,43 @@ export default function App() {
         const notificationData = notification.request.content;
         const alarmId = notificationData.data?.alarmId || '알 수 없음';
         const notificationTime = new Date(notification.date);
-        const notificationTimestamp = notification.date;
         const identifier = notification.request.identifier;
-        
-        // 스케줄링 직후 30초 이내에 발송된 알림은 무시 (즉시 발송 방지)
-        // 선택한 시간에 정확히 발송된 알림만 표시
+
         const now = Date.now();
-        const lastSchedulingStartTime = typeof global !== 'undefined' ? global.lastSchedulingStartTime || 0 : 0;
+        const lastSchedulingStartTime =
+          typeof global !== 'undefined'
+            ? global.lastSchedulingStartTime || 0
+            : 0;
         const timeSinceLastScheduling = now - lastSchedulingStartTime;
-        
+
+        // 스케줄링 직후 30초 이내 알림은 무시
         if (lastSchedulingStartTime > 0 && timeSinceLastScheduling < 30000) {
           console.log('========================================');
           console.log('[알림 필터링] 스케줄링 직후 발송된 알림을 무시합니다');
           console.log(`  - 알림 식별자: ${identifier}`);
-          console.log(`  - 발송 시간: ${notificationTime.toLocaleString()}`);
-          console.log(`  - 마지막 스케줄링 후 경과 시간: ${Math.floor(timeSinceLastScheduling / 1000)}초`);
-          console.log(`  - 이 알림은 설정한 시간(${alarmId})에 발송된 것이 아닙니다`);
-          console.log(`  - 설정한 시간에 정확히 발송된 알림만 표시됩니다`);
+          console.log(
+            `  - 발송 시간: ${notificationTime.toLocaleString()}`
+          );
+          console.log(
+            `  - 마지막 스케줄링 후 경과 시간: ${Math.floor(
+              timeSinceLastScheduling / 1000
+            )}초`
+          );
+          console.log(
+            `  - 이 알림은 설정한 시간(${alarmId})에 발송된 것이 아닙니다`
+          );
+          console.log(
+            `  - 설정한 시간에 정확히 발송된 알림만 표시됩니다`
+          );
           console.log('========================================');
-          return; // 알림 무시
+          return;
         }
-        
+
         console.log('========================================');
         console.log('[알림 발송] 알림이 설정한 시간에 발송되었습니다!');
-        console.log(`  - 알림 설정에서 선택한 시간: 알림 설정에서 지정한 시간에 발송`);
-        console.log(`  - 실제 발송 시간: ${notificationTime.toLocaleString()}`);
+        console.log(
+          `  - 실제 발송 시간: ${notificationTime.toLocaleString()}`
+        );
         console.log(`  - 알림 제목: ${notificationData.title}`);
         console.log(`  - 알림 내용: ${notificationData.body}`);
         console.log(`  - 알림 ID: ${alarmId}`);
@@ -211,8 +263,7 @@ export default function App() {
     responseListener.current =
       Notifications.addNotificationResponseReceivedListener((response) => {
         console.log('알림 눌렀다!', response);
-        // TODO: 여기서 특정 화면으로 이동하고 싶으면
-        // navigation ref를 만들어서 navigate 호출 가능
+        // 필요하면 여기서 특정 화면으로 네비게이션
       });
 
     return () => {
@@ -225,32 +276,60 @@ export default function App() {
     };
   }, []);
 
+  // ✅ 앱 시작 시 매일미션 완료 상태 리셋 (원래 App.js에 있던 것 유지)
   useEffect(() => {
-  const resetDailyCompletion = async () => {
-    await AsyncStorage.removeItem("completedDailyIds");
-  };
-  resetDailyCompletion();
-}, []);
+    const resetDailyCompletion = async () => {
+      await AsyncStorage.removeItem('completedDailyIds');
+    };
+    resetDailyCompletion();
+  }, []);
 
+  // 🔄 아직 auth 상태 로딩 중이면 아무것도 렌더링 안 함
+  if (authLoading) return null;
 
   return (
     <AppProvider>
       <NavigationContainer>
-        <Stack.Navigator
-          screenOptions={{
-            headerTitleAlign: 'center',
-          }}
-        >
-          <Stack.Screen name="Home" component={HomeScreen} options={{ title: '첫 화면' }} />
-          <Stack.Screen name="Records" component={RecordsScreen} options={{ title: '내 기록' }} />
-          <Stack.Screen
-            name="Notifications"
-            component={NotificationsScreen}
-            options={{ title: '알림 설정' }}
-          />
-          <Stack.Screen name="Calendar" component={CalendarScreen} options={{ title: '캘린더' }} />
-          <Stack.Screen name="Report" component={ReportScreen} options={{title: '리포트'}} />
-        </Stack.Navigator>
+        {user ? (
+          // 🔓 로그인 O → 기존 앱 스택
+          <Stack.Navigator
+            screenOptions={{
+              headerTitleAlign: 'center',
+            }}
+          >
+            <Stack.Screen
+              name="Home"
+              component={HomeScreen}
+              options={{ title: '첫 화면' }}
+            />
+            <Stack.Screen
+              name="Records"
+              component={RecordsScreen}
+              options={{ title: '내 기록' }}
+            />
+            <Stack.Screen
+              name="Notifications"
+              component={NotificationsScreen}
+              options={{ title: '알림 설정' }}
+            />
+            <Stack.Screen
+              name="Calendar"
+              component={CalendarScreen}
+              options={{ title: '캘린더' }}
+            />
+            <Stack.Screen
+              name="Report"
+              component={ReportScreen}
+              options={{ title: '리포트' }}
+            />
+          </Stack.Navigator>
+        ) : (
+          // 🔐 로그인 X → 시작/로그인 스택
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="Start" component={StartScreen} />
+            <Stack.Screen name="Login" component={LoginScreen} />
+          </Stack.Navigator>
+        )}
       </NavigationContainer>
     </AppProvider>
   );

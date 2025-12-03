@@ -277,12 +277,12 @@ export default function App() {
   }, []);
 
   // ✅ 앱 시작 시 매일미션 완료 상태 리셋 (원래 App.js에 있던 것 유지)
-  useEffect(() => {
-    const resetDailyCompletion = async () => {
-      await AsyncStorage.removeItem('completedDailyIds');
-    };
-    resetDailyCompletion();
-  }, []);
+  // useEffect(() => {
+  //   const resetDailyCompletion = async () => {
+  //     await AsyncStorage.removeItem('completedDailyIds');
+  //   };
+  //   resetDailyCompletion();
+  // }, []);
 
   // 🔄 아직 auth 상태 로딩 중이면 아무것도 렌더링 안 함
   if (authLoading) return null;

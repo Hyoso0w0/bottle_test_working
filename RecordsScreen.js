@@ -140,7 +140,7 @@ const RecordsScreen = ({ navigation }) => {
 
         {/* Completed Missions List (Toggle) */}
         {showCompleted && (
-          <View style={styles.completedContainer}>
+          <View style={[styles.completedContainer, {marginBottom: 10}]}>
             <Text style={styles.completedTitle}>🎉 완료한 미션</Text>
 
             {completedMissions.length === 0 ? (
@@ -156,7 +156,7 @@ const RecordsScreen = ({ navigation }) => {
           </View>
         )}
 
-        <Text style={styles.statistics_title}>나의 환경 절약 기록</Text>
+        <Text style={styles.statistics_title}>    나의 환경 절약 기록</Text>
 
         <View style={styles.statistics_card}>
           <View style={styles.statistics_card_water}>
@@ -204,6 +204,39 @@ const RecordsScreen = ({ navigation }) => {
                 stages={levelStages.carbon}
               />
           </View>
+        </View>
+
+        <View>
+          <Text style={[styles.statistics_title, {marginTop: 10}]}>     나의 습관 변화</Text>
+          <View style={[styles.statistics_card]}>
+          {completedMissions.length > 0 ? (
+            // Compute top 3 most frequent missions
+            (() => {
+              const freqMap = {};
+              completedMissions.forEach((mission) => {
+                freqMap[mission.mission] = (freqMap[mission.mission] || 0) + 1;
+              });
+              // Convert to array and sort
+                  const top3 = Object.entries(freqMap)
+                    .map(([mission, count]) => ({ mission, count }))
+                    .sort((a, b) => b.count - a.count)
+                    .slice(0, 3);
+        
+                  return top3.map((habit, idx) => (
+                    <View key={idx} style={[styles.habitRow, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }]}>
+                      <Text style={[styles.habitIcon, {fontSize: 24}]}>✅</Text>
+                      <View>
+                        <Text style={[styles.habitTitle, { fontSize: 14, fontWeight: "600" }]}>{habit.mission}</Text>
+                        <Text style={[styles.habitSubtitle, {textAlign: 'center'}]}>꾸준히 실천 중!</Text>
+                      </View>
+                      <Text style={styles.habitCount}>{habit.count}회</Text>
+                    </View>
+                  ));
+                })()
+              ) : (
+                <Text style={{ fontSize: 12, color: "#777", textAlign: "center" }}>미션을 완료해보세요</Text>
+              )}
+              </View>
         </View> 
       </ScrollView>
 

@@ -111,6 +111,16 @@ const CalendarScreen = ({ navigation, route }) => {
   const handleDateSelect = (day) => {
     const newDate = new Date(year, month, day);
     setSelectedDate(newDate);
+    
+    const data = getMissionsForSelectedDate(newDate);
+      
+    setPopupData({
+      missions: data.missions,
+      totals: data.totals,
+      date: newDate,
+    });
+    
+    setPopupVisible(true);
   };
 
   // 캘린더 그리드 생성
@@ -206,6 +216,39 @@ const CalendarScreen = ({ navigation, route }) => {
     );
   };
 
+  //캘린더 날짜 누르면 자세한 정보 나오는 기능
+  const [popupVisible, setPopupVisible] = useState(false);
+  const [popupData, setPopupData] = useState({
+    missions: [],
+    totals: { water: 0, waste: 0, co2: 0 },
+    date: null,
+  });
+  
+  const getMissionsForSelectedDate = (date) => {
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    const d = date.getDate();
+  
+    // 1) Filter missions completed on that date
+    const missionsOfDay = completedMissions.filter((item) => {
+      const c = item.completedAt;
+      if (!c) return false;
+  
+      return c.year === y && c.month === m && c.date === d;
+    });
+  
+    // 2) Calculate totals
+    let totals = { water: 0, waste: 0, co2: 0 };
+  
+    missionsOfDay.forEach((m) => {
+      totals.water += m.water || 0;
+      totals.waste += m.waste || 0;
+      totals.co2 += m.co2 || 0;
+    });
+  
+    return { missions: missionsOfDay, totals };
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <StatusBar style="auto" />
@@ -244,6 +287,56 @@ const CalendarScreen = ({ navigation, route }) => {
           완료한 미션: {getMissionCountForDate(selectedDate)}개
         </Text>
       </View>
+      {popupVisible && (
+        <View style={styles.popupOverlay}>
+          <TouchableOpacity
+            style={styles.popupOverlay}
+            activeOpacity={1}
+            onPress={() => setPopupVisible(false)}  // 🔥 Tap outside to close
+          />
+
+          <View style={styles.popupContainer}>
+          <Text style={styles.popupTitle}>
+            {popupData.date?.getFullYear()}년 {popupData.date?.getMonth() + 1}월 {popupData.date?.getDate()}일
+          </Text>
+
+          {popupData.missions.length === 0 ? (
+            <Text style={{ color: '#777', marginTop: 10 }}>
+              완료된 미션이 없어요 😢
+            </Text>
+          ) : (
+            <>
+              <Text style={[styles.popupSubtitle, {fontSize: 20, textAlign: 'center', marginTop: 1}]}>환경 기여도</Text>
+              <View style={styles.totalsBox}>
+                <Text style={styles.popupSubtitle}>이 날 완료한 미션</Text>
+                  <View style={[styles.totalBoxIndividual, {backgroundColor: '#f8fff4', flexDirection: 'column'}]}>
+                    {popupData.missions.map((m, idx) => (
+                      <Text key={m.id || idx} style={styles.popupMission}>
+                        • {m.mission}
+                      </Text>
+                    ))}
+                    </View>
+              </View>
+              {/* Totals */}
+              <View style={styles.totalsBox}>
+                <View style={[styles.totalBoxIndividual, {backgroundColor: '#F8FFF4'}]}>
+                  <Text style={styles.totalText}>💧 물 절약: </Text>
+                  <Text style={[styles.totalText, {fontSize: 16, fontWeight: 700, color: '#68c036ff'}]}>{popupData.totals.water} ml</Text>
+                </View>
+                <View style={[styles.totalBoxIndividual, {backgroundColor: '#F8FFF4'}]}>
+                  <Text style={styles.totalText}>🗑 쓰레기 절감: </Text>
+                  <Text style={[styles.totalText, {fontSize: 16, fontWeight: 700, color: '#68c036ff'}]}>{popupData.totals.waste} g</Text>
+                </View>
+                <View style={[styles.totalBoxIndividual, {backgroundColor: '#F8FFF4'}]}>
+                  <Text style={styles.totalText}>🌍 탄소 감소: </Text>
+                  <Text style={[styles.totalText, {fontSize: 16, fontWeight: 700, color: '#68c036ff'}]}>{popupData.totals.co2} g</Text>
+                </View>
+              </View>
+            </>
+          )}
+          </View>
+        </View>
+        )}
     </ScrollView>
   );
 };
@@ -390,6 +483,61 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 8,
   },
+  popupOverlay: {
+  position: "absolute",
+  inset: 0,
+  backgroundColor: "rgba(0,0,0,0.4)",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 50,
+},
+
+popupContainer: {
+  width: "80%",
+  padding: 20,
+  backgroundColor: "#e7fff0ff",
+  borderRadius: 16,
+  zIndex: 51,
+},
+
+popupTitle: {
+  fontSize: 18,
+  fontWeight: "700",
+  marginBottom: 10,
+  textAlign: "center",
+},
+
+popupSubtitle: {
+  fontSize: 16,
+  fontWeight: "800",
+  marginTop: 5,
+},
+
+popupMission: {
+  fontSize: 15,
+  marginTop: 6,
+},
+
+totalsBox: {
+  marginTop: 20,
+  padding: 12,
+  backgroundColor: "#ffffffff",
+  borderRadius: 10,
+},
+
+totalText: {
+  fontSize: 15,
+  marginBottom: 5,
+  fontWeight: "600",
+},
+totalBoxIndividual: {
+  marginTop: 10,
+  padding: 12,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: '#b7e098ff',
+  flexDirection: 'row',
+}
 });
 
 export default CalendarScreen;

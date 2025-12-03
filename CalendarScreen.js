@@ -1,7 +1,8 @@
 // CalendarScreen.js
-import React, { useState } from 'react';
+import React, { useState, useContext, useCallback } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { AppContext } from './AppContext'
 
 // 날짜 유틸리티 함수들
 const getDaysInMonth = (date) => {
@@ -35,7 +36,8 @@ const CalendarScreen = ({ navigation, route }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
 
   // 미션 기록 가져오기 (route.params에서)
-  const missionHistory = route.params?.history || [];
+  //const missionHistory = route.params?.history || [];
+  const { completedMissions } = useContext(AppContext)
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -43,12 +45,12 @@ const CalendarScreen = ({ navigation, route }) => {
   const firstDay = getFirstDayOfMonth(currentDate);
 
   // 특정 날짜에 완료한 미션 수 계산
-  const getMissionCountForDate = (date) => {
+  const getMissionCountForDate = useCallback((date) => {
     const targetYear = date.getFullYear();
     const targetMonth = date.getMonth();
     const targetDay = date.getDate();
     
-    return missionHistory.filter((mission) => {
+    return completedMissions.filter((mission) => {
       const completedAt = mission.completedAt;
       // 로컬 시간 객체인 경우
       if (completedAt && typeof completedAt === 'object' && completedAt.year !== undefined) {
@@ -66,7 +68,7 @@ const CalendarScreen = ({ navigation, route }) => {
         missionDate.getDate() === targetDay
       );
     }).length;
-  };
+  }, [completedMissions] );
 
   // 미션 수에 따른 초록색 배경색 계산 (0개 = 연한색, 많을수록 진하게)
   const getGreenBackgroundColor = (missionCount) => {

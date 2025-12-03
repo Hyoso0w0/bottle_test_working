@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import AppProvider from './AppContext'
 
 // AsyncStorage 안전하게 import
 let AsyncStorage;
@@ -34,6 +35,7 @@ import HomeScreen from './HomeScreen';
 import RecordsScreen from './RecordsScreen';
 import NotificationsScreen from './NotificationsScreen';
 import CalendarScreen from './CalendarScreen';
+import ReportScreen from './ReportScreen'
 
 // 알림 핸들러 설정 (앱이 foreground일 때 어떻게 보일지)
 Notifications.setNotificationHandler({
@@ -223,22 +225,33 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+  const resetDailyCompletion = async () => {
+    await AsyncStorage.removeItem("completedDailyIds");
+  };
+  resetDailyCompletion();
+}, []);
+
+
   return (
-    <NavigationContainer>
-      <Stack.Navigator
-        screenOptions={{
-          headerTitleAlign: 'center',
-        }}
-      >
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: '첫 화면' }} />
-        <Stack.Screen name="Records" component={RecordsScreen} options={{ title: '내 기록' }} />
-        <Stack.Screen
-          name="Notifications"
-          component={NotificationsScreen}
-          options={{ title: '알림 설정' }}
-        />
-        <Stack.Screen name="Calendar" component={CalendarScreen} options={{ title: '캘린더' }} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <AppProvider>
+      <NavigationContainer>
+        <Stack.Navigator
+          screenOptions={{
+            headerTitleAlign: 'center',
+          }}
+        >
+          <Stack.Screen name="Home" component={HomeScreen} options={{ title: '첫 화면' }} />
+          <Stack.Screen name="Records" component={RecordsScreen} options={{ title: '내 기록' }} />
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ title: '알림 설정' }}
+          />
+          <Stack.Screen name="Calendar" component={CalendarScreen} options={{ title: '캘린더' }} />
+          <Stack.Screen name="Report" component={ReportScreen} options={{title: '리포트'}} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </AppProvider>
   );
 }

@@ -43,9 +43,9 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   bottleImage: {
-    width: 180,
-    height: 220,
-    marginBottom: 16,
+    width: 240,
+    height: 300,
+    marginBottom: -40,
   },
   logoText: {
     fontSize: 32,

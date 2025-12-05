@@ -10,7 +10,8 @@ import { missions } from "./data/missions";
 import { Alert } from "react-native" 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Feather, MaterialIcons } from "@expo/vector-icons";
-import { saveMissionCompletion } from "./firestoreHelpers";
+import { auth } from "./firebase";
+import { saveMissionCompletion, loadAlarmsForUser } from "./firestoreHelpers";
 
 
 
@@ -71,30 +72,47 @@ const HomeScreen = ({ navigation }) => {
   const [dailyMissions, setDailyMissions] = useState([]);
   const [completedDailyIds, setCompletedDailyIds] = useState([]);
 
-  //홈스크린 알람 완료하기 기능
-  const [todayAlarms, setTodayAlarms] = useState([]);
-  const saveAlarmsToStorage = async (list) => {
-  await AsyncStorage.setItem("@bottle_alarms", JSON.stringify(list));
+   const saveAlarmsToStorage = async (list) => {
+    try {
+      await AsyncStorage.setItem("@bottle_alarms", JSON.stringify(list));
+    } catch (e) {
+      console.log("AsyncStorage 저장 오류:", e);
+    }
   };
 
+  // 🔥 HomeScreen 진입 시 Firestore에서 알림 불러오기
+useEffect(() => {
+  const bootstrapFromFirestore = async () => {
+    try {
+      // 이미 context에 알람이 있으면 굳이 다시 안 불러옴
+      if (alarms && alarms.length > 0) {
+        console.log("✅ HomeScreen: 이미 context에 알람 있음, Firestore 호출 생략");
+        return;
+      }
 
-  useEffect(() => {
-  const loadAlarms = async () => {
-    const stored = await AsyncStorage.getItem("@bottle_alarms");
-    if (!stored) return;
+      const user = auth.currentUser;
+      if (!user) {
+        console.log("⚠️ HomeScreen: 로그인 유저 없음, 알람 로드 생략");
+        return;
+      }
 
-    const all = JSON.parse(stored);
+      console.log("🔄 HomeScreen: Firestore에서 알람 로드 시도:", user.uid);
 
-    // Update context
-    setAlarms(all);
+      // loadAlarmsForUser는 Firestore에서 alarms 배열을 리턴한다고 가정
+      const loadedAlarms = await loadAlarmsForUser(user.uid);
 
-    // Filter today’s alarms
-    const todayActive = all.filter(isAlarmToday);
-    setTodayAlarms(todayActive);
+      console.log("✅ HomeScreen: Firestore에서 불러온 알람:", loadedAlarms);
+
+      if (Array.isArray(loadedAlarms)) {
+        setAlarms(loadedAlarms); // ➜ AppContext 업데이트
+      }
+    } catch (e) {
+      console.log("🔥 HomeScreen Firestore 알람 로드 오류:", e);
+    }
   };
 
-  loadAlarms();
-}, []);
+  bootstrapFromFirestore();
+}, []); // HomeScreen 처음 마운트될 때 한 번만
 
  //helper that detects whether alarm applies today
   const isAlarmToday = (alarm) => {
@@ -126,7 +144,19 @@ const HomeScreen = ({ navigation }) => {
   return false;
 };
 
+// 🔔 context의 alarms를 기준으로 "오늘 알림"만 계산
+const todayAlarms = useMemo(() => {
+  console.log("🔍 HomeScreen에서 받은 alarms:", alarms);
 
+  if (!Array.isArray(alarms) || alarms.length === 0) {
+    return [];
+  }
+
+  const todayActive = alarms.filter(isAlarmToday);
+  console.log("🟢 오늘 기준 필터된 알람:", todayActive);
+
+  return todayActive;
+}, [alarms]);
 
   const completeTask = async (alarmId) => {
     const now = new Date();

@@ -13,6 +13,8 @@ import * as Notifications from 'expo-notifications';
 import WeekDaySelect from './WeekDaySelect';
 import { Feather } from '@expo/vector-icons';
 import { saveAlarmsForUser, loadAlarmsForUser } from "./firestoreHelpers";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "./firebase";
 
 // ---- 시간 계산 유틸 ----
 const getNextTriggerDate = (hour, minute, ampm) => {
@@ -188,19 +190,38 @@ const NotificationsScreen = ({ navigation }) => {
     AsyncStorage !== null && AsyncStorage !== undefined;
 
   const saveAlarmsToStorage = async (alarmsList) => {
-    try {
-      if (!isAsyncStorageAvailable()) {
-        console.warn('AsyncStorage를 사용할 수 없습니다.');
-        return;
-      }
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(alarmsList));
+  try {
+    console.log("🔥 [saveAlarmsToStorage] 호출");
+    console.log("   - 저장하려는 알람 개수:", alarmsList.length);
+    console.log(
+      "   - 저장하려는 알람 목록:",
+      alarmsList.map(a => ({
+        id: a.id,
+        time: `${a.ampm} ${a.hour}:${a.minute}`,
+        repeatDaily: a.repeatDaily,
+        repeatDays: a.repeatDays,
+        selectedYMD: a.selectedYMD,
+        enabled: a.enabled,
+      }))
+    );
 
-      // 🔥 Firestore에도 함께 저장
-      await saveAlarmsForUser(alarmsList);
-    } catch (e) {
-      console.warn('알림 저장 오류:', e);
+    // AsyncStorage
+    if (!isAsyncStorageAvailable()) {
+      console.warn("⚠️ AsyncStorage를 사용할 수 없습니다. Firestore만 저장 시도");
+    } else {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(alarmsList));
+      console.log("   - ✅ AsyncStorage 저장 완료");
     }
-  };
+
+    // Firestore
+    console.log("   - 🔄 Firestore 저장 시도 (saveAlarmsForUser)");
+    await saveAlarmsForUser(alarmsList);
+    console.log("   - ✅ Firestore 저장 완료");
+
+  } catch (e) {
+    console.warn("❌ [saveAlarmsToStorage] 알림 저장 오류:", e);
+  }
+};
 
   const pad2 = (n) => String(n).padStart(2, '0');
 
@@ -221,39 +242,76 @@ const NotificationsScreen = ({ navigation }) => {
   };
 
   const loadAlarms = async () => {
-    try {
-      // 1) 먼저 Firestore에서 로드 시도
-      const fromFirestore = await loadAlarmsForUser();
-      if (fromFirestore && Array.isArray(fromFirestore)) {
-        setAlarms(fromFirestore);
-        // 로컬에도 캐시
-        if (isAsyncStorageAvailable()) {
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fromFirestore));
-        }
-        return;
+  try {
+    console.log("🔄 [loadAlarms] 알림 불러오기 시작");
+
+    // 1) 먼저 Firestore에서 로드 시도
+    const fromFirestore = await loadAlarmsForUser();
+    console.log("   - Firestore에서 받은 값:", fromFirestore);
+
+    if (fromFirestore && Array.isArray(fromFirestore)) {
+      console.log("   - ✅ Firestore에서 알람 배열 로드 성공. 개수:", fromFirestore.length);
+      setAlarms(fromFirestore);
+
+      // 로컬에도 캐시
+      if (isAsyncStorageAvailable()) {
+        await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(fromFirestore));
+        console.log("   - ✅ Firestore 데이터로 AsyncStorage 캐시 업데이트 완료");
+      } else {
+        console.log("   - ⚠️ AsyncStorage 사용 불가, 캐시 스킵");
       }
 
-      // 2) Firestore에 없으면 로컬 AsyncStorage에서 로드
-      if (!isAsyncStorageAvailable()) {
-        console.warn('AsyncStorage를 사용할 수 없습니다.');
-        return;
-      }
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsedAlarms = JSON.parse(stored);
-        setAlarms(parsedAlarms);
-
-        // Firestore에 아직 없다면 저장
-        await saveAlarmsForUser(parsedAlarms);
-      }
-    } catch (e) {
-      console.warn('알림 불러오기 오류:', e);
+      // (원하면 여기서 스케줄도 복구 가능)
+      await applyAllSchedulesSafely(fromFirestore);
+      console.log("   - 🔔 스케줄 재설정 완료");
+      return;
     }
-  };
+
+    console.log("   - ⚠️ Firestore에 알람 데이터가 없거나 배열이 아님. AsyncStorage로 fallback");
+
+    // 2) Firestore에 없으면 로컬 AsyncStorage에서 로드
+    if (!isAsyncStorageAvailable()) {
+      console.warn("   - ⚠️ AsyncStorage를 사용할 수 없습니다. 로드 중단");
+      return;
+    }
+
+    const stored = await AsyncStorage.getItem(STORAGE_KEY);
+    console.log("   - AsyncStorage raw 값:", stored);
+
+    if (stored) {
+      const parsedAlarms = JSON.parse(stored);
+      console.log("   - ✅ AsyncStorage에서 알람 로드. 개수:", parsedAlarms.length);
+      setAlarms(parsedAlarms);
+
+      // Firestore에 아직 없다면 저장
+      console.log("   - 🔄 Firestore에 아직 없다면 저장 시도");
+      await saveAlarmsForUser(parsedAlarms);
+      console.log("   - ✅ Firestore 저장 완료 (AsyncStorage 데이터 기반)");
+      
+      await applyAllSchedulesSafely(parsedAlarms);
+      console.log("   - 🔔 스케줄 재설정 완료");
+    } else {
+      console.log("   - ⚠️ AsyncStorage에도 저장된 알림 없음");
+    }
+  } catch (e) {
+    console.warn("❌ [loadAlarms] 알림 불러오기 오류:", e);
+  }
+};
+
 
   useEffect(() => {
-    loadAlarms();
-  }, []);
+  const unsub = onAuthStateChanged(auth, (user) => {
+    if (user) {
+      console.log("✅ [Auth] 로그인된 유저 확인, 알림 로드:", user.uid);
+      loadAlarms();   // 👉 이 시점에 Firestore에서 알림 읽기
+    } else {
+      console.log("⚠️ [Auth] 로그인 유저 없음, 알림 비우기");
+      setAlarms([]);
+    }
+  });
+
+  return () => unsub();
+}, []);
 
   // 시간 wheel용 데이터
   const hours12 = useMemo(

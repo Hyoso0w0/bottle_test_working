@@ -84,22 +84,22 @@ export default function AppProvider({ children }) {
       const missions = completedSnap.docs.map((d) => d.data());
       setCompletedMissions(missions);
 
-      // 3) 알림 목록 (meta/alarms 문서)
-      const alarmsRef = doc(userRef, "meta", "alarms");
-      const alarmsSnap = await getDoc(alarmsRef);
-      if (alarmsSnap.exists()) {
-        const data = alarmsSnap.data();
-        if (Array.isArray(data.alarms)) {
-          setAlarms(data.alarms);
-        }
-      } else {
-        // Firestore에 없으면 로컬에서 가져와서 Firestore에 한 번 업로드
-        const localAlarms = await loadAlarmsFromAsyncStorage();
-        if (localAlarms.length > 0) {
-          await setDoc(alarmsRef, { alarms: localAlarms }, { merge: true });
-          setAlarms(localAlarms);
-        }
-      }
+      // // 3) 알림 목록 (meta/alarms 문서)
+      // const alarmsRef = doc(userRef, "meta", "alarms");
+      // const alarmsSnap = await getDoc(alarmsRef);
+      // if (alarmsSnap.exists()) {
+      //   const data = alarmsSnap.data();
+      //   if (Array.isArray(data.alarms)) {
+      //     setAlarms(data.alarms);
+      //   }
+      // } else {
+      //   // Firestore에 없으면 로컬에서 가져와서 Firestore에 한 번 업로드
+      //   const localAlarms = await loadAlarmsFromAsyncStorage();
+      //   if (localAlarms.length > 0) {
+      //     await setDoc(alarmsRef, { alarms: localAlarms }, { merge: true });
+      //     setAlarms(localAlarms);
+      //   }
+      // }
 
       // 4) 쿠키 (옵션: meta/cookies 문서로 저장)
       const cookieRef = doc(userRef, "meta", "cookies");
@@ -217,25 +217,15 @@ export default function AppProvider({ children }) {
 
   // 알람이 바뀔 때마다 AsyncStorage + Firestore에 저장
   useEffect(() => {
-    const saveAlarms = async () => {
-      try {
-        await AsyncStorage.setItem("@bottle_alarms", JSON.stringify(alarms));
-
-        if (user) {
-          const userRef = doc(db, "users", user.uid);
-          const alarmsRef = doc(userRef, "meta", "alarms");
-          await setDoc(
-            alarmsRef,
-            { alarms },
-            { merge: true }
-          );
-        }
-      } catch (err) {
-        console.log("Failed to save alarms: ", err);
-      }
-    };
-    saveAlarms();
-  }, [alarms, user]);
+  const saveAlarms = async () => {
+    try {
+      await AsyncStorage.setItem("@bottle_alarms", JSON.stringify(alarms));
+    } catch (err) {
+      console.log("Failed to save alarms: ", err);
+    }
+  };
+  saveAlarms();
+}, [alarms]);
 
   /* =========================================
    *  5. 쿠키(알람 완료 → 쿠키 +10) Firestore 동기화

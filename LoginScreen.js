@@ -1,9 +1,9 @@
 // LoginScreen.js
 import { useState } from "react";
-import { View, Text, TextInput, Pressable } from "react-native";
-import { 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword 
+import { View, Text, TextInput, Pressable, StyleSheet } from "react-native";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
 } from "firebase/auth";
 import { auth } from "./firebase";
 
@@ -17,7 +17,6 @@ export default function LoginScreen() {
     setError("");
     try {
       await signInWithEmailAndPassword(auth, email, pw);
-      // 로그인 성공 → App.js에서 user 감지됨
     } catch (e) {
       setError("로그인 실패: " + e.message);
     }
@@ -27,23 +26,16 @@ export default function LoginScreen() {
     setError("");
     try {
       await createUserWithEmailAndPassword(auth, email, pw);
-      // 회원가입 → 자동로그인됨
     } catch (e) {
       setError("회원가입 실패: " + e.message);
     }
   };
 
   return (
-    <View style={{ flex: 1, padding: 24, justifyContent: "center", gap: 16 }}>
-      <Text style={{ fontSize: 24, fontWeight: "700", textAlign: "center" }}>
-        {isSignup ? "회원가입" : "로그인"}
-      </Text>
+    <View style={styles.container}>
+      <Text style={styles.title}>{isSignup ? "회원가입" : "로그인"}</Text>
 
-      {error !== "" && (
-        <Text style={{ color: "red", textAlign: "center", marginVertical: 8 }}>
-          {error}
-        </Text>
-      )}
+      {error !== "" && <Text style={styles.errorText}>{error}</Text>}
 
       <TextInput
         placeholder="이메일"
@@ -51,12 +43,8 @@ export default function LoginScreen() {
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
-        style={{
-          borderWidth: 1,
-          borderColor: "#ccc",
-          padding: 12,
-          borderRadius: 8,
-        }}
+        placeholderTextColor="#8BA293"
+        style={styles.input}
       />
 
       <TextInput
@@ -64,52 +52,78 @@ export default function LoginScreen() {
         value={pw}
         onChangeText={setPw}
         secureTextEntry
-        style={{
-          borderWidth: 1,
-          borderColor: "#ccc",
-          padding: 12,
-          borderRadius: 8,
-        }}
+        placeholderTextColor="#8BA293"
+        style={styles.input}
       />
 
       {isSignup ? (
-        <Pressable
-          onPress={handleSignup}
-          style={{
-            backgroundColor: "#000",
-            padding: 14,
-            borderRadius: 8,
-            marginTop: 12,
-          }}
-        >
-          <Text style={{ color: "white", textAlign: "center" }}>회원가입</Text>
+        <Pressable onPress={handleSignup} style={styles.mainButton}>
+          <Text style={styles.mainButtonText}>회원가입</Text>
         </Pressable>
       ) : (
-        <Pressable
-          onPress={handleLogin}
-          style={{
-            backgroundColor: "#000",
-            padding: 14,
-            borderRadius: 8,
-            marginTop: 12,
-          }}
-        >
-          <Text style={{ color: "white", textAlign: "center" }}>로그인</Text>
+        <Pressable onPress={handleLogin} style={styles.mainButton}>
+          <Text style={styles.mainButtonText}>로그인</Text>
         </Pressable>
       )}
 
       <Pressable onPress={() => setIsSignup(!isSignup)}>
-        <Text
-          style={{
-            marginTop: 16,
-            color: "blue",
-            textAlign: "center",
-            fontSize: 14,
-          }}
-        >
+        <Text style={styles.switchText}>
           {isSignup ? "로그인 화면으로" : "계정이 없나요? 회원가입"}
         </Text>
       </Pressable>
     </View>
   );
 }
+
+const PRIMARY = "#345943";   // 진한 초록
+const BG = "#EFF5E8";        // 연한 연두
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: BG,
+    paddingHorizontal: 24,
+    justifyContent: "center",
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: "800",
+    textAlign: "center",
+    color: PRIMARY,
+    marginBottom: 24,
+  },
+  errorText: {
+    color: "red",
+    textAlign: "center",
+    marginBottom: 12,
+    fontSize: 13,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#C6D4C5",
+    backgroundColor: "rgba(255,255,255,0.7)",
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 12,
+    fontSize: 14,
+    color: PRIMARY,
+  },
+  mainButton: {
+    backgroundColor: PRIMARY,
+    padding: 14,
+    borderRadius: 999,
+    marginTop: 12,
+  },
+  mainButtonText: {
+    color: "white",
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  switchText: {
+    marginTop: 18,
+    textAlign: "center",
+    fontSize: 14,
+    color: PRIMARY,
+  },
+});

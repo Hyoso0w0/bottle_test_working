@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState,useContext } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,6 +15,7 @@ import { Feather } from '@expo/vector-icons';
 import { saveAlarmsForUser, loadAlarmsForUser } from "./firestoreHelpers";
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "./firebase";
+import { AppContext } from "./AppContext";
 
 // ---- 시간 계산 유틸 ----
 const getNextTriggerDate = (hour, minute, ampm) => {
@@ -145,7 +146,7 @@ try {
 
 const NotificationsScreen = ({ navigation }) => {
   // 알림 목록 관리
-  const [alarms, setAlarms] = useState([]);
+  const { alarms, setAlarms } = useContext(AppContext);
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [outerScrollEnabled, setOuterScrollEnabled] = useState(true);

@@ -109,7 +109,7 @@ export default function App() {
 
         const hour24 = as24h(alarm.hour, alarm.ampm);
         const content = {
-          title: '보들보틀 🌱',
+          title: '마이에코 🌱',
           body:
             alarm.message ||
             `${alarm.ampm} ${pad2(alarm.hour)}:${pad2(

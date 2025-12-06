@@ -619,7 +619,7 @@ const getMissionsForSelectedDate = (date) => {
   return (
     <View style={{flex: 1}}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>보들보틀</Text>
+        <Text style={styles.title}>마이에코</Text>
 
         {/* 미션 (선택한 미션) */}
         {/*기존 미션 부분 삭제*/}

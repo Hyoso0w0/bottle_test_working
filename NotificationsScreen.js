@@ -44,7 +44,7 @@ const scheduleDailyAlarm = async (alarm) => {
 
   const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
-      title: '보들보틀 🌱',
+      title: '마이에코 🌱',
       body: alarm.message,
       data: { alarmId: alarm.id },
     },
@@ -66,7 +66,7 @@ const scheduleOneTimeAlarm = async (alarm) => {
 
   const notificationId = await Notifications.scheduleNotificationAsync({
     content: {
-      title: '보들보틀 🌱',
+      title: '마이에코 🌱',
       body: alarm.message,
       data: { alarmId: alarm.id },
     },
@@ -100,7 +100,7 @@ const scheduleWeeklyAlarm = async (alarm) => {
 
     const id = await Notifications.scheduleNotificationAsync({
       content: {
-        title: '보들보틀 🌱',
+        title: '마이에코 🌱',
         body: alarm.message,
         data: { alarmId: alarm.id },
       },
@@ -905,7 +905,7 @@ const NotificationsScreen = ({ navigation }) => {
               </Text>
               <View style={styles.iosNotificationCard}>
                 <View style={styles.iosRow}>
-                  <Text style={styles.iosAppName}>보들보틀</Text>
+                  <Text style={styles.iosAppName}>마이에코</Text>
                   <Text style={styles.iosAppName}>🌱</Text>
                   <Text style={styles.iosTimestamp}>지금</Text>
                 </View>

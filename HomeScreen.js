@@ -206,32 +206,42 @@ const todayAlarms = useMemo(() => {
 
   // 특정 날짜에 완료한 미션 수 계산
   const getMissionCountForDate = useCallback(
-    (date) => {
-      const targetYear = date.getFullYear();
-      const targetMonth = date.getMonth();
-      const targetDay = date.getDate();
+  (date) => {
+    const targetYear = date.getFullYear();
+    const targetMonth = date.getMonth();
+    const targetDay = date.getDate();
 
-      return completedMissions.filter((mission) => {
-        const completedAt = mission.completedAt;
-        // 로컬 시간 객체인 경우
-        if (completedAt && typeof completedAt === 'object' && completedAt.year !== undefined) {
-          return (
-            completedAt.year === targetYear &&
-            completedAt.month === targetMonth &&
-            completedAt.date === targetDay
-          );
-        }
-        // ISO 문자열인 경우 (하위 호환)
-        const missionDate = new Date(completedAt);
+    return completedMissions.filter((mission) => {
+      if (!mission) return false;
+
+      const completedAt = mission.completedAt;
+
+      // 📌 mission 텍스트가 없는 이상한 데이터는 카운트에서 제외
+      if (!mission.mission) return false;
+      if (!completedAt) return false;
+
+      // 로컬 객체 형태인 경우
+      if (typeof completedAt === 'object' && completedAt.year !== undefined) {
         return (
-          missionDate.getFullYear() === targetYear &&
-          missionDate.getMonth() === targetMonth &&
-          missionDate.getDate() === targetDay
+          completedAt.year === targetYear &&
+          completedAt.month === targetMonth &&
+          completedAt.date === targetDay
         );
-      }).length;
-    },
-    [completedMissions]
-  );
+      }
+
+      // 혹시 ISO 문자열로 저장된 과거 데이터도 처리
+      const missionDate = new Date(completedAt);
+      if (Number.isNaN(missionDate.getTime())) return false;
+
+      return (
+        missionDate.getFullYear() === targetYear &&
+        missionDate.getMonth() === targetMonth &&
+        missionDate.getDate() === targetDay
+      );
+    }).length;
+  },
+  [completedMissions]
+);
 
   // 미션 수에 따른 초록색 강도 계산
   const getGreenBackgroundColor = (missionCount) => {
@@ -595,15 +605,32 @@ const getMissionsForSelectedDate = (date) => {
   const m = date.getMonth();
   const d = date.getDate();
 
-  // 1) Filter missions completed on that date
+  // 1) 해당 날짜 + mission 텍스트가 있는 데이터만 남긴다
   const missionsOfDay = completedMissions.filter((item) => {
+    if (!item) return false;
+
     const c = item.completedAt;
+    // mission 텍스트 없는 이상한 데이터 제거
+    if (!item.mission) return false;
     if (!c) return false;
 
-    return c.year === y && c.month === m && c.date === d;
+    // 로컬 time 객체 형태
+    if (typeof c === 'object' && c.year !== undefined) {
+      return c.year === y && c.month === m && c.date === d;
+    }
+
+    // 혹시 문자열일 수도 있으니 방어적으로 처리
+    const missionDate = new Date(c);
+    if (Number.isNaN(missionDate.getTime())) return false;
+
+    return (
+      missionDate.getFullYear() === y &&
+      missionDate.getMonth() === m &&
+      missionDate.getDate() === d
+    );
   });
 
-  // 2) Calculate totals
+  // 2) 총합 계산
   let totals = { water: 0, waste: 0, co2: 0 };
 
   missionsOfDay.forEach((m) => {
@@ -614,7 +641,6 @@ const getMissionsForSelectedDate = (date) => {
 
   return { missions: missionsOfDay, totals };
 };
-
 
   return (
     <View style={{flex: 1}}>

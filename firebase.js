@@ -1,9 +1,14 @@
 // firebase.js
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from 'firebase/firestore';
+import { 
+  initializeAuth, 
+  getReactNativePersistence 
+} from "firebase/auth";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { getFirestore } from "firebase/firestore";
 import Constants from "expo-constants";
 
+// 🔥 expo-config에서 firebase 키 불러오기
 const {
   apiKey,
   authDomain,
@@ -22,6 +27,13 @@ const firebaseConfig = {
   appId,
 };
 
+// 🔥 앱 초기화
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+
+// 🔥 React Native에서 필수: initializeAuth()
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
+
+// Firestore
 export const db = getFirestore(app);

@@ -17,6 +17,9 @@
         "buildType": "apk",
         "image": "latest"
       },
+      "env": {
+      "EXPO_USE_NODE": "18"
+    },
       "ios": {
         "simulator": false
       }

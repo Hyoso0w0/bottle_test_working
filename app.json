@@ -2,6 +2,7 @@
   "expo": {
     "name": "bottle",
     "slug": "bottle",
+    "scheme": "bottle",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -21,8 +22,24 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.hyoso.bottle"
+      "package": "com.hyoso.bottle",
+      "googleServicesFile": "./google-services.json",
+      "permissions": [
+        "RECEIVE_BOOT_COMPLETED",
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#ffffff",
+          "sounds": []
+        }
+      ],
+      "expo-web-browser"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },

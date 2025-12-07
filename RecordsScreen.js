@@ -11,12 +11,26 @@ import { Feather, MaterialIcons } from "@expo/vector-icons";
 import { AppContext } from "./AppContext";
 import LevelSection from "./LevelSection";
 import { levelStages } from "./data/levels"
+import { signOut } from "firebase/auth";
+import { auth } from "./firebase";
 
 
 
 const RecordsScreen = ({ navigation }) => {
   const { completedMissions, stats, cookieStats } = useContext(AppContext);
   const [showCompleted, setShowCompleted] = useState(false);
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);          // ✅ Firebase에서 로그아웃
+      // App.js에서 onAuthStateChanged로 로그인 상태를 보고
+      // 로그인 안 된 상태면 자동으로 LoginScreen을 보여주도록 돼 있다면
+      // 여기서 추가 네비게이션은 안 해도 돼!
+      // 만약 직접 가고 싶으면 아래처럼도 가능
+      // navigation.replace("Login");
+    } catch (e) {
+      console.log("로그아웃 실패: ", e);
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -35,6 +49,11 @@ const RecordsScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <Text style={styles.headerTitle}>🌿 나의 대시보드</Text>
+
+          {/* 🔥 오른쪽 끝에 로그아웃 텍스트 버튼 */}
+          <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
+            <Text style={styles.logoutText}>로그아웃</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Profile Card */}
@@ -546,6 +565,17 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#8b5f36ff',
   },
+  logoutButton: {
+  marginLeft: "auto",
+  paddingHorizontal: 10,
+  paddingVertical: 4,
+},
+
+logoutText: {
+  fontSize: 14,
+  color: "#444",
+  fontWeight: "600",
+},
 });
 
 export default RecordsScreen

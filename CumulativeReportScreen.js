@@ -327,7 +327,7 @@ const CumulativeReportScreen = ({ navigation }) => {
               </View>
               <View style={[styles.detailNote, {backgroundColor: '#ffedd4'}]}>
                 <Text style={{ color: "#8b5f36" }}>
-                  💡 이만큼의 쓰레기를 줄이는 것은 매립지 공간을 아끼고 토양 오염을 방지하는 데 도움이 됩니다.
+                  💡 쓰레기 매립장으로 향하던 20L 종량제 봉투 하나를 없앴어요!
                 </Text>
               </View>
             </View>
@@ -347,7 +347,7 @@ const CumulativeReportScreen = ({ navigation }) => {
               </View>
               <View style={[styles.detailNote, {backgroundColor: '#dbeafe'}]}>
                 <Text style={{ color: "#174b8a" }}>
-                  💡 물은 소중한 자원입니다. 이만큼의 물을 절약하면 가뭄 지역에 큰 도움이 될 수 있어요.
+                  💡 작은 화분 2~3개에 충분히 물을 줄 수 있는 양을 아꼈어요.
                 </Text>
               </View>
             </View>
@@ -367,7 +367,7 @@ const CumulativeReportScreen = ({ navigation }) => {
               </View>
               <View style={[styles.detailNote, {backgroundColor: '#dcfce7'}]}>
                 <Text style={{ color: "#1b7a40" }}>
-                  💡 탄소 배출을 줄이는 것은 기후 변화를 늦추고 지구 온난화를 막는 데 중요한 역할을 합니다.
+                  💡 어린 나무 30그루를 심는 효과가 있어요.
                 </Text>
               </View>
             </View>

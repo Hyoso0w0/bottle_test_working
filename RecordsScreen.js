@@ -195,7 +195,7 @@ const progress = Math.min(fullSuccessDays/totalDays, 1);
                   <Text style={styles.statistics_icon}>💧</Text>
                 </View>
                 <View>
-                  <Text style={[styles.statistics_value, {marginLeft: 10}, {marginTop: 10}, {fontWeight: 700}, {color: '#3B82F6'}]}> 물 절약 미션 {stats.totalWater} mL</Text>
+                  <Text style={[styles.statistics_value, {marginLeft: 10}, {marginTop: 10}, {fontWeight: 700}, {color: '#3B82F6'}]}> 물 절약 미션 {Math.round(stats.totalWater)} mL</Text>
                   <View style={
                     [styles.button, {
                     backgroundColor: '#60A5FA',

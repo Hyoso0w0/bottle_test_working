@@ -36,8 +36,8 @@ const fmtCarbon = (grams) => `${toKg(grams).toFixed(1)}g`;
 
 // simple equivalence heuristics (approx)
 const eqWasteCups = (grams) => Math.floor(toKg(grams) * 100); // kg *100 -> cups
-const eqWaterShowers = (mL) => Math.floor(toL(mL) / 100); // L / 10 -> showers
-const eqCarbonTrees = (grams) => (Math.floor(toKg(grams) / 10000)).toFixed(1); // kg /10 -> trees
+const eqWaterShowers = (mL) => Math.floor(toL(mL) / 60); // L / 10 -> showers
+const eqCarbonTrees = (grams) => (Math.floor(toKg(grams) / 1000)).toFixed(1); // kg /10 -> trees
 
 // zero template for one month
 const emptyMonthly = () => ({ waste: 0, water: 0, co2: 0 });
@@ -327,7 +327,7 @@ const CumulativeReportScreen = ({ navigation }) => {
               </View>
               <View style={[styles.detailNote, {backgroundColor: '#ffedd4'}]}>
                 <Text style={{ color: "#8b5f36" }}>
-                  💡 쓰레기 매립장으로 향하던 20L 종량제 봉투 하나를 없앴어요!
+                  💡 쓰레기 매립장으로 향하던 종량제 봉투 20개를 없앴어요!
                 </Text>
               </View>
             </View>
@@ -367,7 +367,7 @@ const CumulativeReportScreen = ({ navigation }) => {
               </View>
               <View style={[styles.detailNote, {backgroundColor: '#dcfce7'}]}>
                 <Text style={{ color: "#1b7a40" }}>
-                  💡 어린 나무 30그루를 심는 효과가 있어요.
+                  💡 어린 나무 5그루를 심는 효과가 있어요.
                 </Text>
               </View>
             </View>

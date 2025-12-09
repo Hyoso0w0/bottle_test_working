@@ -32,7 +32,7 @@ const toKg = (grams) => (grams);
 const toL = (milliLiters) => Math.floor(milliLiters / 1000);
 const fmtKg = (grams) => `${(grams).toFixed(1)}kg`;
 const fmtL = (mL) => `${toL(mL)}L`;
-const fmtCarbon = (grams) => `${toKg(grams).toFixed(1)}kg`;
+const fmtCarbon = (grams) => `${toKg(grams).toFixed(1)}g`;
 
 // simple equivalence heuristics (approx)
 const eqWasteCups = (grams) => Math.floor(toKg(grams) * 100); // kg *100 -> cups

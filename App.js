@@ -48,6 +48,7 @@ import RecordsScreen from './RecordsScreen';
 import NotificationsScreen from './NotificationsScreen';
 import CalendarScreen from './CalendarScreen';
 import ReportScreen from './ReportScreen';
+import CumulativeReportScreen from './CumulativeReportScreen';
 
 // 알림 핸들러 설정 (앱이 foreground일 때 어떻게 보일지)
 Notifications.setNotificationHandler({
@@ -118,72 +119,6 @@ export default function App() {
           data: { screen: 'Home', alarmId: alarm.id },
         };
 
-        if (alarm.repeatDaily) {
-          // 매일 반복
-          const now = new Date();
-          const todayAtTime = new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            now.getDate(),
-            hour24,
-            alarm.minute,
-            0,
-            0
-          );
-
-          let firstNotificationTime = todayAtTime;
-          if (todayAtTime <= now) {
-            // 오늘 시간이 지났으면 내일
-            firstNotificationTime = new Date(
-              todayAtTime.getTime() + 24 * 60 * 60 * 1000
-            );
-          }
-
-          try {
-            const notificationId =
-              await Notifications.scheduleNotificationAsync({
-                content,
-                trigger: {
-                  date: firstNotificationTime,
-                  repeats: true,
-                },
-              });
-            const timeDesc =
-              firstNotificationTime > todayAtTime ? '내일부터' : '오늘부터';
-            console.log(
-              `알림 스케줄링 완료: ${alarm.ampm} ${pad2(
-                alarm.hour
-              )}:${pad2(
-                alarm.minute
-              )} (${timeDesc} 시작, 첫 알림: ${firstNotificationTime.toLocaleString()}, 매일 반복, ID: ${notificationId})`
-            );
-          } catch (e) {
-            console.warn(
-              `알림 스케줄링 실패: ${alarm.ampm} ${pad2(
-                alarm.hour
-              )}:${pad2(alarm.minute)}`,
-              e
-            );
-          }
-        } else if (alarm.selectedYMD) {
-          // 특정 날짜 한 번
-          const when = new Date(
-            alarm.selectedYMD.year,
-            alarm.selectedYMD.month,
-            alarm.selectedYMD.day,
-            hour24,
-            alarm.minute,
-            0,
-            0
-          );
-          const now = new Date();
-          if (when > now) {
-            await Notifications.scheduleNotificationAsync({
-              content,
-              trigger: { date: when },
-            });
-          }
-        }
       }
     } catch (e) {
       console.warn('알림 예약 오류:', e);
@@ -321,6 +256,11 @@ export default function App() {
               name="Report"
               component={ReportScreen}
               options={{ title: '리포트' }}
+            />
+            <Stack.Screen
+            name='CumulativeReport'
+            component={CumulativeReportScreen}
+            options={{ title: '누적 리포트'}}
             />
           </Stack.Navigator>
         ) : (

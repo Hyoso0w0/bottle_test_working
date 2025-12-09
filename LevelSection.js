@@ -133,7 +133,7 @@ const LevelSection = ({ label, emoji, unit, value, stages }) => {
 
         {/* Progress Numbers */}
         <Text style={styles.progressLabel}>
-          {value.toLocaleString()} {unit} / {nextGoal.toLocaleString()} {unit}
+          {(Math.round(value)).toLocaleString()} {unit} / {nextGoal.toLocaleString()} {unit}
         </Text>
       </View>
     </View>

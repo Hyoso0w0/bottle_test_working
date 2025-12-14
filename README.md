@@ -48,6 +48,7 @@
 
 ## Installation Guide
 ### 설치 및 실행
+**해당 깃허브 레퍼지토리는 안드로이드 앱 깃허브 링크입니다.**
 
 **App Download 앱 다운로드**
 
@@ -69,12 +70,12 @@
 
 1. 리포지토리 클론하기
 ```bash
-git clone https://github.com/Hyoso0w0/bottle_web_working.git
+git clone https://github.com/Hyoso0w0/bottle_test_working.git
 ```
 
 2. 폴더로 이동
 ```bash
-cd bottle_web_working
+cd bottle_test_working
 ```
 
 3. 디펜던시 다운로드하기

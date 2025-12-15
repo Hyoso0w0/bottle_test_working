@@ -71,14 +71,16 @@
 **2. 로그인 화면에서 이메일과 비밀번호 설정 후 서비스 시작**
 
 **Run on Local Environment 로컬 환경에서 실행**
-**알림 기능은 데스크탑 웹에서 확인 가능(모바일 웹에선 불가)**
+웹 페이지의 알림 기능은 데스크탑 웹에서 확인 가능(모바일 웹에선 불가)
+
+**로컬 설치 방법**
 
 1. 리포지토리 클론하기
 ```bash
 git clone https://github.com/Hyoso0w0/bottle_test_working.git
 ```
 
-2. 폴더로 이동
+1. 폴더로 이동
 ```bash
 cd bottle_test_working
 ```
@@ -95,19 +97,19 @@ APP_ID=YOUR_APP_ID
 MEASUREMENT_ID=G-XXXXXXXXXX
 ```
 
-4. 디펜던시 다운로드하기
+1. 디펜던시 다운로드하기
 ```bash
 npm install --global expo-cli
 ```
 
-5. Expo-go 실행
+1. Expo-go 실행
 ```bash
 npx expo start
 ```
 
-6. 휴대전화 기기에 Expo-go 앱 다운로드
+1. 휴대전화 기기에 Expo-go 앱 다운로드
 
-7. 휴대전화로 터미널에서 생성된 QR 코드 스캔
+2. 휴대전화로 터미널에서 생성된 QR 코드 스캔
 
 ---
 
